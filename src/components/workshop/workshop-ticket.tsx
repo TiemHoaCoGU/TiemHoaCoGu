@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AlertCircle, CalendarDays, Clock, MapPin, Ticket, Users } from 'lucide-react';
+import { AlertCircle, CalendarDays, Clock, Copy, Check, MapPin, Ticket, Users } from 'lucide-react';
 import { storeRequest } from '@/lib/browser-api';
+import { DEFAULT_WORKSHOP_LOCATION } from '@/lib/transaction';
 import type { WorkshopTicket } from '@/lib/api/client';
 
 const TZ = 'Asia/Ho_Chi_Minh';
@@ -70,7 +71,7 @@ function reasonText(ticket: WorkshopTicket) {
   if (status === 'attended') return 'Vé đã được check-in.';
   if (status === 'cancelled') return 'Đặt chỗ đã hủy, vé không còn hiệu lực.';
   if (status === 'expired') return 'Đặt chỗ đã hết hạn.';
-  if (status === 'pending' || status === 'held')
+  if (status === 'pending')
     return 'Chờ tiệm xác nhận thanh toán để phát hành vé QR.';
   if (status === 'confirmed') return 'Vé chưa được phát hành. Vui lòng thử tải lại sau ít phút.';
   return 'Vé chưa sẵn sàng.';
@@ -80,6 +81,21 @@ export default function WorkshopTicketView({ bookingId }: { bookingId: string })
   const [ticket, setTicket] = useState<WorkshopTicket | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState('');
+
+  // m9: copy the staff check-in link when the ticket carries one.
+  async function copyCheckInLink() {
+    if (!ticket?.checkInUrl) return;
+    try {
+      await navigator.clipboard.writeText(ticket.checkInUrl);
+      setCopied(true);
+      setCopyError('');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopyError('Không thể sao chép tự động. Vui lòng chép tay liên kết.');
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -172,7 +188,7 @@ export default function WorkshopTicketView({ bookingId }: { bookingId: string })
             </div>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
               <MapPin size={15} aria-hidden="true" style={{ marginTop: 2, color: '#243db5' }} />
-              <span>{ticket.location || 'Xưởng Tiệm Hoa Có Gu'}</span>
+              <span>{ticket.location || DEFAULT_WORKSHOP_LOCATION}</span>
             </div>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
               <Users size={15} aria-hidden="true" style={{ marginTop: 2, color: '#243db5' }} />
@@ -186,6 +202,35 @@ export default function WorkshopTicketView({ bookingId }: { bookingId: string })
               </p>
             )}
             <p style={{ margin: '4px 0 0', color: '#475569' }}>Đưa mã này cho tiệm khi check-in.</p>
+            {ticket.checkInUrl && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => void copyCheckInLink()}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: '#fff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    padding: '6px 12px',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: '#243db5',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {copied ? <Check size={14} /> : <Copy size={14} />}
+                  {copied ? 'Đã sao chép liên kết' : 'Sao chép liên kết check-in'}
+                </button>
+                {copyError && (
+                  <p style={{ margin: '6px 0 0', color: '#991b1b', fontSize: '12.5px' }}>
+                    {copyError}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       ) : (
