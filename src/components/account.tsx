@@ -550,6 +550,15 @@ export default function Account() {
     );
   };
 
+  const canRequestRefund = (order: OrderItem) => {
+    const s = (order.orderStatus || '').toLowerCase();
+    const p = (order.paymentStatus || '').toLowerCase();
+    return (
+      (s === 'confirmed' || s === 'processing' || s === 'completed') &&
+      (p === 'paid' || p === 'partiallypaid' || p === 'partiallyrefunded')
+    );
+  };
+
   const handleCancelOrder = async (orderId: string) => {
     if (!window.confirm('Bạn có chắc chắn muốn hủy đơn hàng hoa này không?')) return;
     setBusy(true);
@@ -562,6 +571,31 @@ export default function Account() {
     } catch (error) {
       setIsError(true);
       setMessage(error instanceof Error ? error.message : 'Không thể hủy đơn hàng.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRequestRefund = async (order: OrderItem) => {
+    const isCompleted = (order.orderStatus || '').toLowerCase() === 'completed';
+    const actionLabel = isCompleted ? 'trả hàng & hoàn tiền' : 'hủy đơn & hoàn tiền';
+    const reason = window.prompt(
+      `Nhập lý do yêu cầu ${actionLabel} cho đơn hàng #${order.orderCode} (tối đa 500 ký tự):`,
+      isCompleted ? 'Sản phẩm nhận được có lỗi/hư hỏng trong vận chuyển' : 'Thay đổi kế hoạch, muốn hủy đơn và hoàn tiền qua cổng thanh toán',
+    );
+    if (!reason || !reason.trim()) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      await storeRequest(`orders/${order.id}/refund-request`, { reason: reason.trim() }, 'POST');
+      setMessage(
+        `Đã gửi yêu cầu ${actionLabel} cho đơn hàng #${order.orderCode}. Cửa hàng sẽ xét duyệt và xử lý qua cổng thanh toán.`,
+      );
+      setIsError(false);
+      await loadCustomerData();
+    } catch (error) {
+      setIsError(true);
+      setMessage(error instanceof Error ? error.message : 'Không thể gửi yêu cầu hoàn tiền.');
     } finally {
       setBusy(false);
     }
@@ -1693,6 +1727,27 @@ export default function Account() {
                     </span>
                   </div>
 
+                  {(order.orderStatus || '').toLowerCase() === 'delivering' && (
+                    <div
+                      style={{
+                        fontSize: '12px',
+                        color: '#9a3412',
+                        background: '#fff7ed',
+                        border: '1px solid #ffedd5',
+                        borderRadius: '6px',
+                        padding: '6px 10px',
+                        margin: '8px 0',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <span>
+                        🚚 <strong>Giao Hàng Nhanh:</strong> Đơn hàng đang trên đường giao. Quý khách không thể tự hủy hoặc hoàn tiền khi bưu tá đang vận chuyển.
+                      </span>
+                    </div>
+                  )}
+
                   <div className="order-card-footer">
                     <div>
                       <span style={{ fontSize: '12px', color: 'var(--portal-muted)' }}>
@@ -1717,6 +1772,25 @@ export default function Account() {
                           disabled={busy}
                         >
                           Hủy đơn
+                        </button>
+                      )}
+                      {canRequestRefund(order) && (
+                        <button
+                          type="button"
+                          className="account-btn-secondary"
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '12px',
+                            color: '#b45309',
+                            borderColor: '#fde68a',
+                            background: '#fffbeb',
+                          }}
+                          onClick={() => void handleRequestRefund(order)}
+                          disabled={busy}
+                        >
+                          {(order.orderStatus || '').toLowerCase() === 'completed'
+                            ? 'Trả hàng & hoàn tiền'
+                            : 'Hủy & hoàn tiền'}
                         </button>
                       )}
                       <Link
