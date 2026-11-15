@@ -781,10 +781,13 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
                 • <strong>Trước ca học ≥ 48 giờ:</strong> Hoàn lại <strong>100%</strong> giá trị vé.
               </div>
               <div>
-                • <strong>Trong vòng 48 giờ trước ca:</strong> Hoàn lại <strong>70%</strong> giá trị vé (tiệm xin phép giữ 30% để bù chi phí chuẩn bị nguyên vật liệu hoa sáp &amp; bàn cắm riêng).
+                • <strong>Trong vòng 48 giờ trước ca:</strong> Hoàn lại <strong>70%</strong> giá trị
+                vé (tiệm xin phép giữ 30% để bù chi phí chuẩn bị nguyên vật liệu hoa sáp &amp; bàn
+                cắm riêng).
               </div>
               <div>
-                • <strong>Nếu tiệm hủy ca học:</strong> Tự động hoàn tiền <strong>100%</strong> cho toàn bộ vé đã đăng ký.
+                • <strong>Nếu tiệm hủy ca học:</strong> Tự động hoàn tiền <strong>100%</strong> cho
+                toàn bộ vé đã đăng ký.
               </div>
             </div>
           </div>

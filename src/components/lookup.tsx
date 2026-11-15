@@ -183,7 +183,11 @@ export default function Lookup() {
     setPending(true);
     setError('');
     try {
-      await storeRequest(`orders/${selectedOrder.id}/refund-request`, { reason: reason.trim() }, 'POST');
+      await storeRequest(
+        `orders/${selectedOrder.id}/refund-request`,
+        { reason: reason.trim() },
+        'POST',
+      );
       const fresh = await storeRequest<Order>(`orders/${selectedOrder.id}`);
       setSelectedOrder(fresh);
       setItems((xs) => xs.map((x) => (isOrder(x) && x.id === fresh.id ? fresh : x)));

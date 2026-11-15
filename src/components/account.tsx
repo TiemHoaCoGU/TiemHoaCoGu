@@ -582,7 +582,9 @@ export default function Account() {
     const actionLabel = isCompleted ? 'trả hàng & hoàn tiền' : 'hủy đơn & hoàn tiền';
     const reason = window.prompt(
       `Nhập lý do yêu cầu ${actionLabel} cho đơn hàng #${order.orderCode} (tối đa 500 ký tự):`,
-      isCompleted ? 'Sản phẩm nhận được có lỗi/hư hỏng trong vận chuyển' : 'Thay đổi kế hoạch, muốn hủy đơn và hoàn tiền qua cổng thanh toán',
+      isCompleted
+        ? 'Sản phẩm nhận được có lỗi/hư hỏng trong vận chuyển'
+        : 'Thay đổi kế hoạch, muốn hủy đơn và hoàn tiền qua cổng thanh toán',
     );
     if (!reason || !reason.trim()) return;
     setBusy(true);
@@ -608,7 +610,8 @@ export default function Account() {
   };
 
   const handleCancelBooking = async (bookingOrId: Booking | string) => {
-    const booking = typeof bookingOrId === 'string' ? bookings.find((b) => b.id === bookingOrId) : bookingOrId;
+    const booking =
+      typeof bookingOrId === 'string' ? bookings.find((b) => b.id === bookingOrId) : bookingOrId;
     const bookingId = typeof bookingOrId === 'string' ? bookingOrId : bookingOrId.id;
 
     let isWithin48h = false;
@@ -625,7 +628,12 @@ export default function Account() {
         : `\n\nBạn đang hủy trước ca học trên 48 giờ. Bạn sẽ được hoàn lại 100% toàn bộ tiền vé (${formatMoney(booking.totalAmount)}).`;
     }
 
-    if (!window.confirm(`Bạn có chắc chắn muốn hủy vé tham gia workshop này không?${refundAmountNotice}`)) return;
+    if (
+      !window.confirm(
+        `Bạn có chắc chắn muốn hủy vé tham gia workshop này không?${refundAmountNotice}`,
+      )
+    )
+      return;
     setBusy(true);
     setMessage('');
     try {
@@ -1634,14 +1642,14 @@ export default function Account() {
                                 )}
                                 {isCancelled && (
                                   <div>
-                                    <strong>Trạng thái hủy:</strong> Khách hàng đã hủy giữ chỗ
-                                    (Ca học được giải phóng cho học viên khác)
+                                    <strong>Trạng thái hủy:</strong> Khách hàng đã hủy giữ chỗ (Ca
+                                    học được giải phóng cho học viên khác)
                                   </div>
                                 )}
                                 {isExpired && (
                                   <div>
-                                    <strong>Trạng thái hết hạn:</strong> Quá hạn thanh toán 10
-                                    phút, hệ thống tự động hoàn lại chỗ trống
+                                    <strong>Trạng thái hết hạn:</strong> Quá hạn thanh toán 10 phút,
+                                    hệ thống tự động hoàn lại chỗ trống
                                   </div>
                                 )}
                               </div>
@@ -1768,7 +1776,8 @@ export default function Account() {
                     >
                       <Truck size={14} style={{ flexShrink: 0 }} />
                       <span>
-                        <strong>Giao Hàng Nhanh:</strong> Đơn hàng đang trên đường giao. Quý khách không thể tự hủy hoặc hoàn tiền khi bưu tá đang vận chuyển.
+                        <strong>Giao Hàng Nhanh:</strong> Đơn hàng đang trên đường giao. Quý khách
+                        không thể tự hủy hoặc hoàn tiền khi bưu tá đang vận chuyển.
                       </span>
                     </div>
                   )}
@@ -1782,7 +1791,14 @@ export default function Account() {
                         {formatMoney(order.totalAmount)}
                       </strong>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '8px',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                      }}
+                    >
                       {canCancelOrder(order) && (
                         <button
                           type="button"

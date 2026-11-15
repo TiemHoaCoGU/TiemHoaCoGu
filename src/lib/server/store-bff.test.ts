@@ -16,16 +16,12 @@ describe('store BFF security', () => {
       protected: true,
       write: false,
     });
-    expect(
-      resolveStoreRoute(['orders', orderId, 'refund-request'], 'POST'),
-    ).toEqual({
+    expect(resolveStoreRoute(['orders', orderId, 'refund-request'], 'POST')).toEqual({
       upstream: `/api/orders/${orderId}/refund-request`,
       protected: true,
       write: true,
     });
-    expect(
-      resolveStoreRoute(['orders', orderId, 'refunds'], 'GET'),
-    ).toEqual({
+    expect(resolveStoreRoute(['orders', orderId, 'refunds'], 'GET')).toEqual({
       upstream: `/api/orders/${orderId}/refunds`,
       protected: true,
       write: false,

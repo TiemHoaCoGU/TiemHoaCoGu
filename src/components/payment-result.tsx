@@ -287,7 +287,9 @@ export default function PaymentResult() {
                     { success: true, responseCode: '00' },
                     'POST',
                   );
-                  const updated = await storeRequest<PaymentBalance>(`gateway/orders/${orderId}/balance`);
+                  const updated = await storeRequest<PaymentBalance>(
+                    `gateway/orders/${orderId}/balance`,
+                  );
                   setBalance(updated);
                   setError('');
                 } catch (err) {
