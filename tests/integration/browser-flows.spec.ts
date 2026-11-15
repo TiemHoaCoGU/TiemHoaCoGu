@@ -371,6 +371,11 @@ test('UI workshop: trang chi tiết hiển thị đầy đủ và mở drawer t�
   await expect(drawer).toBeVisible();
   // The drawer opened preselected on the picked session.
   await expect(drawer.locator('.ws-session-option.selected', { hasText: '10:00' })).toBeVisible();
+  // P2-3: the deposit choice renders once a session is picked.
+  await expect(drawer.getByText('Trả đủ 300.000 ₫')).toBeVisible();
+  await expect(drawer.getByText('Cọc trước 30%')).toBeVisible();
+  await drawer.getByText('Cọc trước 30%').click();
+  await expect(drawer.getByRole('button', { name: /Cọc trước 30%/ })).toBeVisible();
   await expect(drawer.getByRole('button', { name: /Tiếp tục thanh toán/ })).toBeVisible();
   await Promise.all([customer.context.close(), manager.close()]);
 });
