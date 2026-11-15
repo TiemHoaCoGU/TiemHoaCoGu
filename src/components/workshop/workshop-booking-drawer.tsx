@@ -42,6 +42,8 @@ interface BookingDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   imageUrl?: string;
+  /** Session to preselect when the drawer opens (e.g. picked on the detail page). */
+  preselectedSessionId?: string;
 }
 
 function formatDate(iso: string) {
@@ -67,6 +69,7 @@ export default function WorkshopBookingDrawer({
   isOpen,
   onClose,
   imageUrl = '/images/workshop-hands.webp',
+  preselectedSessionId,
 }: BookingDrawerProps) {
   const router = useRouter();
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
@@ -147,14 +150,20 @@ export default function WorkshopBookingDrawer({
     }
   }, [isOpen, workshopId]);
 
-  // Initialize selected session when drawer opens
+  // Initialize selected session when drawer opens: prefer the preselected
+  // session (detail page pick) when it is open and not already booked.
   useEffect(() => {
     if (isOpen && availableSessions.length > 0 && !selectedSessionId) {
+      const preselected = preselectedSessionId
+        ? availableSessions.find(
+            (s) => s.id === preselectedSessionId && !activeBookedSessionIds.has(s.id),
+          )
+        : undefined;
       // Pick first session that is NOT already booked
       const firstUnbooked = availableSessions.find((s) => !activeBookedSessionIds.has(s.id));
-      setSelectedSessionId((firstUnbooked || availableSessions[0]).id);
+      setSelectedSessionId((preselected || firstUnbooked || availableSessions[0]).id);
     }
-  }, [isOpen, availableSessions, selectedSessionId, activeBookedSessionIds]);
+  }, [isOpen, availableSessions, selectedSessionId, activeBookedSessionIds, preselectedSessionId]);
 
   if (!isOpen || !workshop) return null;
 

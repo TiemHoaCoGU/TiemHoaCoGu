@@ -314,6 +314,67 @@ test('UI workshop: chọn ca trong drawer, giữ chỗ thật rồi sang trang t
   await Promise.all([customer.context.close(), manager.close()]);
 });
 
+test('UI workshop: trang chi tiết hiển thị đầy đủ và mở drawer từ ca đã chọn', async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const manager = await admin(browser);
+  const suffix = randomUUID().slice(0, 8);
+  const workshop = (await (
+    await ok(
+      await manager.request.post('/api/store/workshops', {
+        headers,
+        data: {
+          code: `UI-WS-D-${suffix}`,
+          name: `UI Workshop Detail ${suffix}`,
+          basePrice: 300000,
+          duration: 120,
+          maxCapacity: 8,
+          description: 'Synthetic detail workshop',
+          leadContent: 'Lead content for detail',
+          goalsJson: JSON.stringify(['Học uốn cánh sáp', 'Học gói bó hoa']),
+          includesJson: JSON.stringify(['Hoa sáp mang về', 'Dụng cụ đầy đủ']),
+          forWho: 'Người mới bắt đầu',
+          isActive: true,
+        },
+      }),
+    )
+  ).json()) as { id: string };
+  await ok(
+    await manager.request.post(`/api/store/workshops/${workshop.id}/sessions`, {
+      headers,
+      data: {
+        sessionDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+        startTime: '10:00:00',
+        endTime: '12:00:00',
+        capacity: 8,
+        location: 'Synthetic UI studio',
+      },
+    }),
+  );
+  const customer = await authenticatedContext(browser);
+  const page = await customer.context.newPage();
+  await page.goto(`/workshop/${workshop.id}`);
+  await page.waitForLoadState('networkidle');
+  await expect(
+    page.getByRole('heading', { name: `UI Workshop Detail ${suffix}` }),
+  ).toBeVisible();
+  await expect(page.getByText('Lead content for detail')).toBeVisible();
+  await expect(page.getByText('Học uốn cánh sáp')).toBeVisible();
+  await expect(page.getByText('Hoa sáp mang về')).toBeVisible();
+  await expect(page.getByText('Người mới bắt đầu')).toBeVisible();
+  await expect(page.getByText('0 người đã đăng ký')).toBeVisible();
+  const row = page.locator('.ws-detail-session', { hasText: '10:00' });
+  await expect(row.getByText('Còn 8 chỗ')).toBeVisible();
+  await row.getByRole('button', { name: 'Chọn ca này' }).click();
+  const drawer = page.getByRole('dialog');
+  await expect(drawer).toBeVisible();
+  // The drawer opened preselected on the picked session.
+  await expect(drawer.locator('.ws-session-option.selected', { hasText: '10:00' })).toBeVisible();
+  await expect(drawer.getByRole('button', { name: /Tiếp tục thanh toán/ })).toBeVisible();
+  await Promise.all([customer.context.close(), manager.close()]);
+});
+
 test('UI CMS: customer bị chặn, Admin sửa false flags và đọc gallery thật', async ({ browser }) => {
   const manager = await admin(browser);
   const p = await product(manager.request);
