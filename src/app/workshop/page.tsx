@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
+import Link from 'next/link';
 import { Sparkles, HeartHandshake, ShieldCheck, Clock3, ArrowDown } from 'lucide-react';
 import { PageIntro } from '@/components/site';
 import WorkshopCatalog from '@/components/workshop/workshop-catalog';
@@ -177,11 +178,11 @@ export default async function WorkshopPage() {
               <h4
                 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 700, color: '#1c2326' }}
               >
-                Quản lý vé & linh hoạt đổi ca
+                Quản lý vé & hủy giữ chỗ linh hoạt
               </h4>
               <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.6, color: '#64748b' }}>
-                Vé lưu trực tiếp trong tài khoản cá nhân. Hỗ trợ hủy giữ chỗ hoặc đổi ca trước giờ
-                học 24 tiếng.
+                Vé lưu trực tiếp trong tài khoản cá nhân. Hủy giữ chỗ được chấp nhận trước giờ học
+                bắt đầu. Vé đã thanh toán sẽ được tạo yêu cầu hoàn tiền để tiệm xử lý.
               </p>
             </div>
           </div>
@@ -209,9 +210,9 @@ export default async function WorkshopPage() {
             <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '24px' }}>
               {storefront.error || 'Dịch vụ tạm thời không khả dụng. Vui lòng thử lại sau.'}
             </p>
-            <a className="button" href="/workshop">
+            <Link className="button" href="/workshop">
               Thử tải lại danh sách
-            </a>
+            </Link>
           </div>
         </section>
       ) : (
