@@ -116,6 +116,10 @@ export default function CustomForm() {
   const [locationsLoaded, setLocationsLoaded] = useState(false);
   const [locationsFailed, setLocationsFailed] = useState(false);
   const [locationsRetry, setLocationsRetry] = useState(0);
+  // Trạng thái tải danh mục phường: giống tỉnh, cần nút thử lại riêng vì
+  // lỗi phường không tự hết khi đổi tỉnh (tỉnh đã chọn vẫn giữ nguyên).
+  const [wardsFailed, setWardsFailed] = useState(false);
+  const [wardsRetry, setWardsRetry] = useState(0);
   const submitting = useRef(false);
   const uploaded = useRef<{ file: File; url: string } | null>(null);
   useEffect(
@@ -157,19 +161,23 @@ export default function CustomForm() {
   useEffect(() => {
     if (!provinceId) {
       setWards([]);
+      setWardsFailed(false);
       return;
     }
     let active = true;
     setWardsLoading(true);
+    setWardsFailed(false);
     setLocationError('');
     storeRequest<ShippingArea[]>(`shipping/locations/wards?provinceId=${provinceId}`)
       .then((areas) => {
         if (!active) return;
         setWards(areas);
+        setWardsFailed(areas.length === 0);
         if (!areas.length) setLocationError('GHN không trả danh mục phường cho tỉnh đã chọn.');
       })
       .catch(() => {
         if (!active) return;
+        setWardsFailed(true);
         setLocationError('Không tải được danh mục phường GHN staging.');
       })
       .finally(() => {
@@ -178,7 +186,7 @@ export default function CustomForm() {
     return () => {
       active = false;
     };
-  }, [provinceId]);
+  }, [provinceId, wardsRetry]);
   function selectImage(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -606,11 +614,15 @@ export default function CustomForm() {
                           {locationError}
                         </p>
                       )}
-                      {locationsFailed && (
+                      {(locationsFailed || wardsFailed) && (
                         <button
                           type="button"
                           className="x-btn x-btn--ghost"
-                          onClick={() => setLocationsRetry((count) => count + 1)}
+                          onClick={() =>
+                            wardsFailed
+                              ? setWardsRetry((count) => count + 1)
+                              : setLocationsRetry((count) => count + 1)
+                          }
                         >
                           Thử lại
                         </button>

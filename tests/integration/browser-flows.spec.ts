@@ -262,6 +262,67 @@ test('UI đặt riêng: tạo yêu cầu, xem và duyệt giá thật, checkout 
   await Promise.all([customer.context.close(), manager.close()]);
 });
 
+test('UI đặt riêng: phường tải lỗi thì có nút thử lại, thử lại xong chọn được phường', async ({
+  browser,
+}) => {
+  // Dev server hydrate chậm trên máy yếu: cho test này 120s thay vì 60s mặc định.
+  test.setTimeout(120_000);
+  const manager = await admin(browser);
+  const p = await product(manager.request, true);
+  const customer = await authenticatedContext(browser);
+  const page = await customer.context.newPage();
+  await page.route('**/api/store/shipping/locations/provinces', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{ id: 1000001, name: 'Hồ Chí Minh', parentId: 1 }]),
+    }),
+  );
+  let wardRequests = 0;
+  await page.route('**/api/store/shipping/locations/wards**', (route) => {
+    wardRequests += 1;
+    if (wardRequests === 1) return route.fulfill({ status: 500, body: 'GHN staging down' });
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{ id: 1003580, name: 'Phường Thủ Đức', parentId: 1000001 }]),
+    });
+  });
+  await page.goto('/dat-rieng');
+  // Chờ bundle tải xong rồi mới bấm: khẳng định từng lựa chọn đã nhận
+  // (aria-pressed) trước khi bấm tiếp, nếu không nút submit type=submit
+  // sẽ gửi form native và tải lại trang, mất hết bước đã chọn.
+  await page.waitForLoadState('networkidle');
+  const occasion = page.getByRole('button', { name: 'Sinh nhật' });
+  await occasion.click();
+  await expect(occasion).toHaveAttribute('aria-pressed', 'true', { timeout: 30000 });
+  const budget = page.getByRole('button', { name: '300.000 – 500.000 ₫' });
+  await budget.click();
+  await expect(budget).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Tiếp theo' }).click();
+  await expect(page.getByRole('heading', { name: 'Bảng màu bạn thích' })).toBeVisible();
+  const palette = page.getByRole('button', { name: 'Trắng & xanh lá' });
+  await palette.click();
+  await expect(palette).toHaveAttribute('aria-pressed', 'true');
+  await page.getByLabel('Sản phẩm nền').selectOption(p.id);
+  await page.getByRole('button', { name: 'Tiếp theo' }).click();
+  await page.getByLabel('Điều bạn muốn gửi gắm').fill('Synthetic UI ward retry');
+  await page.getByRole('button', { name: 'Tiếp theo' }).click();
+  await page.getByLabel('Tên của bạn').fill(customer.user.fullName);
+  await page.getByLabel('Số điện thoại').fill(customer.user.phoneNumber);
+  await page.getByLabel('Tỉnh/thành phố').selectOption('1000001');
+  await expect(page.getByText('Không tải được danh mục phường GHN staging.')).toBeVisible();
+  const retry = page.getByRole('button', { name: 'Thử lại', exact: true });
+  await expect(retry).toBeVisible();
+  await retry.click();
+  await page.getByLabel('Phường/xã').selectOption('1003580');
+  expect(wardRequests).toBe(2);
+  // Chọn được phường rồi thì qua được bước liên hệ (không còn bị chặn vì thiếu khu vực).
+  await page.getByRole('button', { name: 'Xem bản nháp' }).click();
+  await expect(page.getByText('BẢN NHÁP YÊU CẦU')).toBeVisible();
+  await Promise.all([customer.context.close(), manager.close()]);
+});
+
 test('UI workshop: ca tổng hợp tương lai, hold thật có hạn, chưa thanh toán', async ({
   browser,
 }) => {
