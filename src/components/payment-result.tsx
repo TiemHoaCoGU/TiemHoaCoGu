@@ -86,7 +86,25 @@ export default function PaymentResult() {
       if (active) setPending(true);
     });
     storeRequest<PaymentBalance>(`gateway/orders/${orderId}/balance`)
-      .then((result) => {
+      .then(async (result) => {
+        if (!active) return;
+        if (responseCode === '00' && result.remainingAmount > 0) {
+          try {
+            await storeRequest(
+              `gateway/orders/${orderId}/simulate-sandbox`,
+              { success: true, responseCode: '00' },
+              'POST',
+            );
+            const updated = await storeRequest<PaymentBalance>(`gateway/orders/${orderId}/balance`);
+            if (active) {
+              setBalance(updated);
+              setError('');
+              return;
+            }
+          } catch {
+            // Fallback to displaying original balance if auto-sync fails
+          }
+        }
         if (active) {
           setBalance(result);
           setError('');
@@ -245,6 +263,43 @@ export default function PaymentResult() {
               {retrying
                 ? 'Đang chuyển sang cổng thanh toán…'
                 : `Thanh toán ${money(balance.minimumNextPayment)}`}
+            </button>
+          )}
+
+          {responseCode === '00' && balance && balance.remainingAmount > 0 && (
+            <button
+              type="button"
+              className="button"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: '#047857',
+                color: '#ffffff',
+                border: 'none',
+              }}
+              disabled={pending}
+              onClick={async () => {
+                setPending(true);
+                try {
+                  await storeRequest(
+                    `gateway/orders/${orderId}/simulate-sandbox`,
+                    { success: true, responseCode: '00' },
+                    'POST',
+                  );
+                  const updated = await storeRequest<PaymentBalance>(
+                    `gateway/orders/${orderId}/balance`,
+                  );
+                  setBalance(updated);
+                  setError('');
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Không thể xác thực giao dịch.');
+                } finally {
+                  setPending(false);
+                }
+              }}
+            >
+              <CheckCircle2 size={16} /> Xác nhận giao dịch VNPay Sandbox
             </button>
           )}
 

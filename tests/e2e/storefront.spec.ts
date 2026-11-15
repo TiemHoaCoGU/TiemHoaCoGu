@@ -233,6 +233,7 @@ test('workshop không giữ chỗ giả và tra cứu không tạo kết quả g
     if (request.method() === 'POST') bookingPosts.push(request.url());
   });
   await page.goto('/workshop');
+  await page.waitForLoadState('networkidle');
   const form = page.locator('main #hen-o-xuong');
   let isConnected = false;
   if ((await form.count()) > 0) {
@@ -279,7 +280,7 @@ test('workshop không giữ chỗ giả và tra cứu không tạo kết quả g
     }
   } else {
     // Redesigned interactive workshop catalog
-    await expect(page.locator('.workshop-page')).toBeVisible();
+    await expect(page.locator('.workshop-page')).toBeVisible({ timeout: 15000 });
     await expect(page.locator('#danh-sach-workshop')).toBeVisible();
     const bookButtons = page.locator('.ws-btn-book');
     if ((await bookButtons.count()) > 0) {

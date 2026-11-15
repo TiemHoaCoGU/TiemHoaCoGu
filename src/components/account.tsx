@@ -29,6 +29,7 @@ import {
   ExternalLink,
   ListFilter,
   ScrollText,
+  Truck,
 } from 'lucide-react';
 import { storeRequest } from '@/lib/browser-api';
 import { customStatusLabel, customStatusTone } from '@/lib/custom-order-status';
@@ -550,6 +551,15 @@ export default function Account() {
     );
   };
 
+  const canRequestRefund = (order: OrderItem) => {
+    const s = (order.orderStatus || '').toLowerCase();
+    const p = (order.paymentStatus || '').toLowerCase();
+    return (
+      (s === 'confirmed' || s === 'processing' || s === 'completed') &&
+      (p === 'paid' || p === 'partiallypaid' || p === 'partiallyrefunded')
+    );
+  };
+
   const handleCancelOrder = async (orderId: string) => {
     if (!window.confirm('Bạn có chắc chắn muốn hủy đơn hàng hoa này không?')) return;
     setBusy(true);
@@ -567,13 +577,63 @@ export default function Account() {
     }
   };
 
+  const handleRequestRefund = async (order: OrderItem) => {
+    const isCompleted = (order.orderStatus || '').toLowerCase() === 'completed';
+    const actionLabel = isCompleted ? 'trả hàng & hoàn tiền' : 'hủy đơn & hoàn tiền';
+    const reason = window.prompt(
+      `Nhập lý do yêu cầu ${actionLabel} cho đơn hàng #${order.orderCode} (tối đa 500 ký tự):`,
+      isCompleted
+        ? 'Sản phẩm nhận được có lỗi/hư hỏng trong vận chuyển'
+        : 'Thay đổi kế hoạch, muốn hủy đơn và hoàn tiền qua cổng thanh toán',
+    );
+    if (!reason || !reason.trim()) return;
+    setBusy(true);
+    setMessage('');
+    try {
+      await storeRequest(`orders/${order.id}/refund-request`, { reason: reason.trim() }, 'POST');
+      setMessage(
+        `Đã gửi yêu cầu ${actionLabel} cho đơn hàng #${order.orderCode}. Cửa hàng sẽ xét duyệt và xử lý qua cổng thanh toán.`,
+      );
+      setIsError(false);
+      await loadCustomerData();
+    } catch (error) {
+      setIsError(true);
+      setMessage(error instanceof Error ? error.message : 'Không thể gửi yêu cầu hoàn tiền.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const canCancelBooking = (booking: Booking) => {
     const s = (booking.bookingStatus || '').toLowerCase();
     return s !== 'cancelled' && s !== 'expired' && s !== 'attended' && s !== 'no_show';
   };
 
-  const handleCancelBooking = async (bookingId: string) => {
-    if (!window.confirm('Bạn có chắc chắn muốn hủy vé tham gia workshop này không?')) return;
+  const handleCancelBooking = async (bookingOrId: Booking | string) => {
+    const booking =
+      typeof bookingOrId === 'string' ? bookings.find((b) => b.id === bookingOrId) : bookingOrId;
+    const bookingId = typeof bookingOrId === 'string' ? bookingOrId : bookingOrId.id;
+
+    let isWithin48h = false;
+    let refundAmountNotice = '';
+    if (booking) {
+      const session = sessionsMap[booking.sessionId]?.session;
+      if (session) {
+        const sessionDate = new Date(`${session.sessionDate}T${session.startTime || '00:00:00'}`);
+        const hoursUntil = (sessionDate.getTime() - Date.now()) / (1000 * 60 * 60);
+        isWithin48h = hoursUntil < 48;
+      }
+      refundAmountNotice = isWithin48h
+        ? `\n\nLưu ý chính sách: Ca học sẽ diễn ra trong vòng 48 giờ tới. Do tiệm đã chuẩn bị sẵn bộ hoa sáp và dụng cụ riêng cho bạn, tiệm xin phép hoàn lại 70% giá trị vé (${formatMoney(booking.totalAmount * 0.7)}) qua cổng thanh toán.`
+        : `\n\nBạn đang hủy trước ca học trên 48 giờ. Bạn sẽ được hoàn lại 100% toàn bộ tiền vé (${formatMoney(booking.totalAmount)}).`;
+    }
+
+    if (
+      !window.confirm(
+        `Bạn có chắc chắn muốn hủy vé tham gia workshop này không?${refundAmountNotice}`,
+      )
+    )
+      return;
     setBusy(true);
     setMessage('');
     try {
@@ -582,7 +642,11 @@ export default function Account() {
         'Khách hàng tự hủy trên tài khoản cá nhân',
         'POST',
       );
-      setMessage('Đã hủy vé workshop thành công.');
+      setMessage(
+        isWithin48h
+          ? 'Đã hủy vé workshop thành công. Yêu cầu hoàn 70% tiền vé đã được chuyển cho cửa hàng xét duyệt.'
+          : 'Đã hủy vé workshop thành công. Yêu cầu hoàn 100% tiền vé đã được chuyển cho cửa hàng xét duyệt.',
+      );
       setIsError(false);
       await loadCustomerData();
     } catch (error) {
@@ -1561,31 +1625,31 @@ export default function Account() {
                                 }}
                               >
                                 <div>
-                                  🕒 <strong>Khởi tạo yêu cầu giữ chỗ:</strong>{' '}
+                                  <strong>Khởi tạo yêu cầu giữ chỗ:</strong>{' '}
                                   {formatDate(b.createdAt)}
                                 </div>
                                 {isConfirmed && (
                                   <div>
-                                    💳 <strong>Thanh toán:</strong> Đã ghi nhận thanh toán · Đủ điều
+                                    <strong>Thanh toán:</strong> Đã ghi nhận thanh toán · Đủ điều
                                     kiện vào lớp
                                   </div>
                                 )}
                                 {b.checkedInAt && (
                                   <div>
-                                    ✨ <strong>Điểm danh:</strong> Học viên đã check-in vào lớp lúc{' '}
+                                    <strong>Điểm danh:</strong> Học viên đã check-in vào lớp lúc{' '}
                                     {formatDate(b.checkedInAt)}
                                   </div>
                                 )}
                                 {isCancelled && (
                                   <div>
-                                    ❌ <strong>Trạng thái hủy:</strong> Khách hàng đã hủy giữ chỗ
-                                    (Ca học được giải phóng cho học viên khác)
+                                    <strong>Trạng thái hủy:</strong> Khách hàng đã hủy giữ chỗ (Ca
+                                    học được giải phóng cho học viên khác)
                                   </div>
                                 )}
                                 {isExpired && (
                                   <div>
-                                    ⚠️ <strong>Trạng thái hết hạn:</strong> Quá hạn thanh toán 10
-                                    phút, hệ thống tự động hoàn lại chỗ trống
+                                    <strong>Trạng thái hết hạn:</strong> Quá hạn thanh toán 10 phút,
+                                    hệ thống tự động hoàn lại chỗ trống
                                   </div>
                                 )}
                               </div>
@@ -1679,7 +1743,9 @@ export default function Account() {
                 <article key={order.id} className="order-card">
                   <div className="order-card-header">
                     <div>
-                      <h3 className="order-code-title">Đơn hàng #{order.orderCode}</h3>
+                      <h3 className="order-code-title" title={`Đơn hàng #${order.orderCode}`}>
+                        Đơn hàng #{order.orderCode}
+                      </h3>
                       <p className="order-date">Đặt ngày {formatDate(order.createdAt)}</p>
                     </div>
                     <span className={`badge-status ${statusBadgeClass(order.orderStatus)}`}>
@@ -1693,6 +1759,29 @@ export default function Account() {
                     </span>
                   </div>
 
+                  {(order.orderStatus || '').toLowerCase() === 'delivering' && (
+                    <div
+                      style={{
+                        fontSize: '12px',
+                        color: '#9a3412',
+                        background: '#fff7ed',
+                        border: '1px solid #ffedd5',
+                        borderRadius: '6px',
+                        padding: '6px 10px',
+                        margin: '8px 0',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <Truck size={14} style={{ flexShrink: 0 }} />
+                      <span>
+                        <strong>Giao Hàng Nhanh:</strong> Đơn hàng đang trên đường giao. Quý khách
+                        không thể tự hủy hoặc hoàn tiền khi bưu tá đang vận chuyển.
+                      </span>
+                    </div>
+                  )}
+
                   <div className="order-card-footer">
                     <div>
                       <span style={{ fontSize: '12px', color: 'var(--portal-muted)' }}>
@@ -1702,7 +1791,14 @@ export default function Account() {
                         {formatMoney(order.totalAmount)}
                       </strong>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '8px',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                      }}
+                    >
                       {canCancelOrder(order) && (
                         <button
                           type="button"
@@ -1712,6 +1808,7 @@ export default function Account() {
                             fontSize: '12px',
                             color: '#dc2626',
                             borderColor: '#fca5a5',
+                            whiteSpace: 'nowrap',
                           }}
                           onClick={() => void handleCancelOrder(order.id)}
                           disabled={busy}
@@ -1719,10 +1816,30 @@ export default function Account() {
                           Hủy đơn
                         </button>
                       )}
+                      {canRequestRefund(order) && (
+                        <button
+                          type="button"
+                          className="account-btn-secondary"
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '12px',
+                            color: '#b45309',
+                            borderColor: '#fde68a',
+                            background: '#fffbeb',
+                            whiteSpace: 'nowrap',
+                          }}
+                          onClick={() => void handleRequestRefund(order)}
+                          disabled={busy}
+                        >
+                          {(order.orderStatus || '').toLowerCase() === 'completed'
+                            ? 'Trả hàng & hoàn tiền'
+                            : 'Hủy & hoàn tiền'}
+                        </button>
+                      )}
                       <Link
                         href="/tra-cuu"
                         className="account-btn-secondary"
-                        style={{ padding: '6px 12px', fontSize: '12px' }}
+                        style={{ padding: '6px 12px', fontSize: '12px', whiteSpace: 'nowrap' }}
                       >
                         Theo dõi <ArrowRight size={14} />
                       </Link>

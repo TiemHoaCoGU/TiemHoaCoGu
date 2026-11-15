@@ -73,6 +73,16 @@ export function resolveStoreRoute(path: string[], method: string): StoreRoute | 
       protected: true,
     },
     { pattern: new RegExp(`^orders/${GUID}/cancel$`), methods: ['POST'], protected: true },
+    {
+      pattern: new RegExp(`^orders/${GUID}/refund-request$`),
+      methods: ['POST'],
+      protected: true,
+    },
+    {
+      pattern: new RegExp(`^orders/${GUID}/refunds$`),
+      methods: ['GET'],
+      protected: true,
+    },
     { pattern: new RegExp(`^workshops/${GUID}$`), methods: ['GET'], protected: false },
     { pattern: new RegExp(`^workshops/${GUID}/sessions$`), methods: ['GET'], protected: false },
     // Booking writes intentionally require auth so a user's history is reliable.
