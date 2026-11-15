@@ -240,9 +240,10 @@ test('UI đặt riêng: tạo yêu cầu, xem và duyệt giá thật, checkout 
   await Promise.all([customer.context.close(), manager.close()]);
 });
 
-test('UI workshop: ca tổng hợp tương lai, hold thật có hạn, chưa thanh toán', async ({
+test('UI workshop: chọn ca trong drawer, giữ chỗ thật rồi sang trang thanh toán', async ({
   browser,
 }) => {
+  test.setTimeout(120_000);
   const manager = await admin(browser);
   const suffix = randomUUID().slice(0, 8);
   const workshop = (await (
@@ -278,19 +279,27 @@ test('UI workshop: ca tổng hợp tương lai, hold thật có hạn, chưa tha
   const customer = await authenticatedContext(browser);
   const page = await customer.context.newPage();
   await page.goto('/workshop');
-  const form = page.locator('#hen-o-xuong');
-  await form.getByLabel(/Trải nghiệm bạn muốn thử/).selectOption(workshop.id);
-  await form.getByLabel(/Ca thực tế/).selectOption(session.id);
-  await form.locator('[name="name"]').fill(customer.user.fullName);
-  await form.locator('[name="phone"]').fill(customer.user.phoneNumber);
-  await form.locator('[name="guests"]').selectOption('1');
+  await page.waitForLoadState('networkidle');
+  const card = page.locator('article', { hasText: `UI Workshop ${suffix}` });
+  await expect(card.getByRole('button', { name: 'Chọn ca & Giữ chỗ' })).toBeVisible();
+  await card.getByRole('button', { name: 'Chọn ca & Giữ chỗ' }).click();
+  const drawer = page.getByRole('dialog');
+  await expect(drawer).toBeVisible();
+  // Pick the session explicitly (the drawer also auto-picks the first free one).
+  await drawer.locator('.ws-session-option', { hasText: '10:00' }).first().click();
+  // The submit button only appears once the drawer has loaded the logged-in
+  // user; waiting for it also proves hydration (a pre-hydration click would
+  // fire a native form submit instead of the React handler).
+  const submit = drawer.getByRole('button', { name: /Tiếp tục thanh toán/ });
+  await expect(submit).toBeVisible();
   const response = page.waitForResponse(
     (r) =>
       r.url().endsWith(`/api/store/bookings/sessions/${session.id}`) &&
       r.request().method() === 'POST',
   );
-  await form.getByRole('button', { name: 'Giữ chỗ tạm thời', exact: true }).click();
+  await submit.click();
   const booking = (await (await ok(await response)).json()) as {
+    id: string;
     bookingCode: string;
     bookingStatus: string;
     ticketCount: number;
@@ -298,8 +307,10 @@ test('UI workshop: ca tổng hợp tương lai, hold thật có hạn, chưa tha
   };
   expect(booking).toMatchObject({ bookingStatus: 'pending', ticketCount: 1 });
   expect(new Date(booking.holdExpiresAt).getTime()).toBeGreaterThan(Date.now());
-  await expect(form.locator('.form-status[role="status"]')).toContainText(booking.bookingCode);
-  await expect(form.locator('.form-status[role="status"]')).toContainText('Chưa thanh toán');
+  await page.waitForURL(new RegExp(`/thanh-toan\\?bookingId=${booking.id}`));
+  // The checkout page loaded the hold: bank-transfer box + VNPay button.
+  await expect(page.getByRole('button', { name: /Tôi đã chuyển khoản/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Thanh toán VNPay/ })).toBeVisible();
   await Promise.all([customer.context.close(), manager.close()]);
 });
 
