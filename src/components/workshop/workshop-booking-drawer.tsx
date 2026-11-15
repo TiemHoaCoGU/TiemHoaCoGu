@@ -561,6 +561,8 @@ export default function WorkshopBookingDrawer({
 
               <p className="ws-confirm-note">
                 Chỗ ngồi của bạn sẽ được giữ trong 10 phút để hoàn tất thanh toán.
+                <br />
+                Chính sách hủy: Hoàn 100% nếu hủy trước ca học ≥ 48h; hoàn 70% trong vòng 48h (30% bù phí nguyên vật liệu).
               </p>
             </div>
           </form>

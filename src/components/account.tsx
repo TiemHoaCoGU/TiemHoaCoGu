@@ -606,8 +606,25 @@ export default function Account() {
     return s !== 'cancelled' && s !== 'expired' && s !== 'attended' && s !== 'no_show';
   };
 
-  const handleCancelBooking = async (bookingId: string) => {
-    if (!window.confirm('Bạn có chắc chắn muốn hủy vé tham gia workshop này không?')) return;
+  const handleCancelBooking = async (bookingOrId: Booking | string) => {
+    const booking = typeof bookingOrId === 'string' ? bookings.find((b) => b.id === bookingOrId) : bookingOrId;
+    const bookingId = typeof bookingOrId === 'string' ? bookingOrId : bookingOrId.id;
+
+    let isWithin48h = false;
+    let refundAmountNotice = '';
+    if (booking) {
+      const session = sessionsMap[booking.sessionId]?.session;
+      if (session) {
+        const sessionDate = new Date(`${session.sessionDate}T${session.startTime || '00:00:00'}`);
+        const hoursUntil = (sessionDate.getTime() - Date.now()) / (1000 * 60 * 60);
+        isWithin48h = hoursUntil < 48;
+      }
+      refundAmountNotice = isWithin48h
+        ? `\n\n📌 Lưu ý chính sách: Ca học sẽ diễn ra trong vòng 48 giờ tới. Do tiệm đã chuẩn bị sẵn bộ hoa sáp và dụng cụ riêng cho bạn, tiệm xin phép hoàn lại 70% giá trị vé (${formatMoney(booking.totalAmount * 0.7)}) qua cổng thanh toán.`
+        : `\n\n📌 Bạn đang hủy trước ca học trên 48 giờ. Bạn sẽ được hoàn lại 100% toàn bộ tiền vé (${formatMoney(booking.totalAmount)}).`;
+    }
+
+    if (!window.confirm(`Bạn có chắc chắn muốn hủy vé tham gia workshop này không?${refundAmountNotice}`)) return;
     setBusy(true);
     setMessage('');
     try {
@@ -616,7 +633,11 @@ export default function Account() {
         'Khách hàng tự hủy trên tài khoản cá nhân',
         'POST',
       );
-      setMessage('Đã hủy vé workshop thành công.');
+      setMessage(
+        isWithin48h
+          ? 'Đã hủy vé workshop thành công. Yêu cầu hoàn 70% tiền vé đã được chuyển cho cửa hàng xét duyệt.'
+          : 'Đã hủy vé workshop thành công. Yêu cầu hoàn 100% tiền vé đã được chuyển cho cửa hàng xét duyệt.',
+      );
       setIsError(false);
       await loadCustomerData();
     } catch (error) {

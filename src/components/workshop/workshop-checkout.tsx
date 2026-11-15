@@ -537,6 +537,33 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
                 <span>Tiệm xác nhận thanh toán trước khi phát hành vé QR.</span>
               </div>
             </div>
+
+            <div
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '16px',
+                padding: '16px 18px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                fontSize: '12px',
+                color: '#475569',
+              }}
+            >
+              <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: '2px' }}>
+                📌 Chính sách hủy vé &amp; hoàn tiền
+              </div>
+              <div>
+                • <strong>Trước ca học ≥ 48 giờ:</strong> Hoàn lại <strong>100%</strong> giá trị vé.
+              </div>
+              <div>
+                • <strong>Trong vòng 48 giờ trước ca:</strong> Hoàn lại <strong>70%</strong> giá trị vé (tiệm xin phép giữ 30% để bù chi phí chuẩn bị nguyên vật liệu hoa sáp &amp; bàn cắm riêng).
+              </div>
+              <div>
+                • <strong>Nếu tiệm hủy ca học:</strong> Tự động hoàn tiền <strong>100%</strong> cho toàn bộ vé đã đăng ký.
+              </div>
+            </div>
           </div>
         </div>
       )}
