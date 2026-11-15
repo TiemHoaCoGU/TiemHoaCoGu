@@ -240,9 +240,10 @@ test('UI đặt riêng: tạo yêu cầu, xem và duyệt giá thật, checkout 
   await Promise.all([customer.context.close(), manager.close()]);
 });
 
-test('UI workshop: ca tổng hợp tương lai, hold thật có hạn, chưa thanh toán', async ({
+test('UI workshop: chọn ca trong drawer, giữ chỗ thật rồi sang trang thanh toán', async ({
   browser,
 }) => {
+  test.setTimeout(120_000);
   const manager = await admin(browser);
   const suffix = randomUUID().slice(0, 8);
   const workshop = (await (
@@ -278,19 +279,27 @@ test('UI workshop: ca tổng hợp tương lai, hold thật có hạn, chưa tha
   const customer = await authenticatedContext(browser);
   const page = await customer.context.newPage();
   await page.goto('/workshop');
-  const form = page.locator('#hen-o-xuong');
-  await form.getByLabel(/Trải nghiệm bạn muốn thử/).selectOption(workshop.id);
-  await form.getByLabel(/Ca thực tế/).selectOption(session.id);
-  await form.locator('[name="name"]').fill(customer.user.fullName);
-  await form.locator('[name="phone"]').fill(customer.user.phoneNumber);
-  await form.locator('[name="guests"]').selectOption('1');
+  await page.waitForLoadState('networkidle');
+  const card = page.locator('article', { hasText: `UI Workshop ${suffix}` });
+  await expect(card.getByRole('button', { name: 'Chọn ca & Giữ chỗ' })).toBeVisible();
+  await card.getByRole('button', { name: 'Chọn ca & Giữ chỗ' }).click();
+  const drawer = page.getByRole('dialog');
+  await expect(drawer).toBeVisible();
+  // Pick the session explicitly (the drawer also auto-picks the first free one).
+  await drawer.locator('.ws-session-option', { hasText: '10:00' }).first().click();
+  // The submit button only appears once the drawer has loaded the logged-in
+  // user; waiting for it also proves hydration (a pre-hydration click would
+  // fire a native form submit instead of the React handler).
+  const submit = drawer.getByRole('button', { name: /Tiếp tục thanh toán/ });
+  await expect(submit).toBeVisible();
   const response = page.waitForResponse(
     (r) =>
       r.url().endsWith(`/api/store/bookings/sessions/${session.id}`) &&
       r.request().method() === 'POST',
   );
-  await form.getByRole('button', { name: 'Giữ chỗ tạm thời', exact: true }).click();
+  await submit.click();
   const booking = (await (await ok(await response)).json()) as {
+    id: string;
     bookingCode: string;
     bookingStatus: string;
     ticketCount: number;
@@ -298,8 +307,74 @@ test('UI workshop: ca tổng hợp tương lai, hold thật có hạn, chưa tha
   };
   expect(booking).toMatchObject({ bookingStatus: 'pending', ticketCount: 1 });
   expect(new Date(booking.holdExpiresAt).getTime()).toBeGreaterThan(Date.now());
-  await expect(form.locator('.form-status[role="status"]')).toContainText(booking.bookingCode);
-  await expect(form.locator('.form-status[role="status"]')).toContainText('Chưa thanh toán');
+  await page.waitForURL(new RegExp(`/thanh-toan\\?bookingId=${booking.id}`));
+  // The checkout page loaded the hold: bank-transfer box + VNPay button.
+  await expect(page.getByRole('button', { name: /Tôi đã chuyển khoản/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Thanh toán VNPay/ })).toBeVisible();
+  await Promise.all([customer.context.close(), manager.close()]);
+});
+
+test('UI workshop: trang chi tiết hiển thị đầy đủ và mở drawer từ ca đã chọn', async ({
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const manager = await admin(browser);
+  const suffix = randomUUID().slice(0, 8);
+  const workshop = (await (
+    await ok(
+      await manager.request.post('/api/store/workshops', {
+        headers,
+        data: {
+          code: `UI-WS-D-${suffix}`,
+          name: `UI Workshop Detail ${suffix}`,
+          basePrice: 300000,
+          duration: 120,
+          maxCapacity: 8,
+          description: 'Synthetic detail workshop',
+          leadContent: 'Lead content for detail',
+          goalsJson: JSON.stringify(['Học uốn cánh sáp', 'Học gói bó hoa']),
+          includesJson: JSON.stringify(['Hoa sáp mang về', 'Dụng cụ đầy đủ']),
+          forWho: 'Người mới bắt đầu',
+          isActive: true,
+        },
+      }),
+    )
+  ).json()) as { id: string };
+  await ok(
+    await manager.request.post(`/api/store/workshops/${workshop.id}/sessions`, {
+      headers,
+      data: {
+        sessionDate: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+        startTime: '10:00:00',
+        endTime: '12:00:00',
+        capacity: 8,
+        location: 'Synthetic UI studio',
+      },
+    }),
+  );
+  const customer = await authenticatedContext(browser);
+  const page = await customer.context.newPage();
+  await page.goto(`/workshop/${workshop.id}`);
+  await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('heading', { name: `UI Workshop Detail ${suffix}` })).toBeVisible();
+  await expect(page.getByText('Lead content for detail')).toBeVisible();
+  await expect(page.getByText('Học uốn cánh sáp')).toBeVisible();
+  await expect(page.getByText('Hoa sáp mang về')).toBeVisible();
+  await expect(page.getByText('Người mới bắt đầu')).toBeVisible();
+  await expect(page.getByText('0 người đã đăng ký')).toBeVisible();
+  const row = page.locator('.ws-detail-session', { hasText: '10:00' });
+  await expect(row.getByText('Còn 8 chỗ')).toBeVisible();
+  await row.getByRole('button', { name: 'Chọn ca này' }).click();
+  const drawer = page.getByRole('dialog');
+  await expect(drawer).toBeVisible();
+  // The drawer opened preselected on the picked session.
+  await expect(drawer.locator('.ws-session-option.selected', { hasText: '10:00' })).toBeVisible();
+  // P2-3: the deposit choice renders once a session is picked.
+  await expect(drawer.getByText('Trả đủ 300.000 ₫')).toBeVisible();
+  await expect(drawer.getByText('Cọc trước 30%')).toBeVisible();
+  await drawer.getByText('Cọc trước 30%').click();
+  await expect(drawer.getByRole('button', { name: /Cọc trước 30%/ })).toBeVisible();
+  await expect(drawer.getByRole('button', { name: /Tiếp tục thanh toán/ })).toBeVisible();
   await Promise.all([customer.context.close(), manager.close()]);
 });
 

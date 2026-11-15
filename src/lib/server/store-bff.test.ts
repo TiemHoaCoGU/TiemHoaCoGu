@@ -236,4 +236,17 @@ describe('store BFF security', () => {
     expect(resolveStoreRoute(['payments', 'booking', guid, 'confirm', 'extra'], 'POST')).toBeNull();
     expect(resolveStoreRoute(['payments', 'booking', 'not-a-guid', 'confirm'], 'POST')).toBeNull();
   });
+  it('allows protected VNPay booking routes (start, return, sync) and nothing else', () => {
+    const guid = '00000000-0000-4000-8000-000000000001';
+    for (const suffix of ['vnpay', 'vnpay/return', 'vnpay/sync']) {
+      expect(resolveStoreRoute(['bookings', guid, ...suffix.split('/')], 'POST')).toEqual({
+        upstream: `/api/bookings/${guid}/${suffix}`,
+        protected: true,
+        write: true,
+      });
+      expect(resolveStoreRoute(['bookings', guid, ...suffix.split('/')], 'GET')).toBeNull();
+    }
+    expect(resolveStoreRoute(['bookings', guid, 'vnpay', 'other'], 'POST')).toBeNull();
+    expect(resolveStoreRoute(['bookings', 'not-a-guid', 'vnpay'], 'POST')).toBeNull();
+  });
 });

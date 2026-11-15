@@ -22,6 +22,7 @@ import {
   CreditCard,
 } from 'lucide-react';
 import { storeRequest } from '@/lib/browser-api';
+import { DEFAULT_WORKSHOP_LOCATION } from '@/lib/transaction';
 import type { WorkshopBrief, WorkshopSession, RosterBooking } from './types';
 import FloralCalendarPopover from './floral-calendar-popover';
 
@@ -44,6 +45,24 @@ function formatDate(iso?: string) {
   try {
     return new Intl.DateTimeFormat('vi-VN', {
       weekday: 'short',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
+// m13: check-in time is time-aware (hour + minute, Asia/Ho_Chi_Minh) — the
+// old formatDate showed the date only, so two check-ins on one day looked identical.
+function formatCheckInTime(iso?: string) {
+  if (!iso) return '—';
+  try {
+    return new Intl.DateTimeFormat('vi-VN', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      hour: '2-digit',
+      minute: '2-digit',
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -268,23 +287,24 @@ export default function StaffWorkshopRoster() {
   };
 
   // Record Counter Payment for Pending Booking
+  // M5: collect the remaining balance, not the full total (a deposit may
+  // already be paid), with a unique POS code per booking + timestamp.
   const handleRecordPayment = async (booking: RosterBooking) => {
     setActionBusy(booking.id);
     setError('');
     setSuccessMsg('');
+    const amount = booking.remainingAmount ?? booking.totalAmount;
     try {
       await storeRequest(
         `payments/booking/${booking.id}`,
         {
           paymentMethod: 'Cash',
-          transactionCode: `POS-${Date.now().toString().slice(-6)}`,
-          amount: booking.totalAmount,
+          transactionCode: `POS-${booking.bookingCode}-${Date.now()}`,
+          amount,
         },
         'POST',
       );
-      setSuccessMsg(
-        `Đã thu ${formatMoney(booking.totalAmount)} và xác nhận vé ${booking.bookingCode}!`,
-      );
+      setSuccessMsg(`Đã thu ${formatMoney(amount)} và xác nhận vé ${booking.bookingCode}!`);
       if (activeSession) {
         await loadRosterForSession(activeSession);
       }
@@ -451,7 +471,7 @@ export default function StaffWorkshopRoster() {
                     </strong>
                   </span>
                   <span>
-                    <MapPin size={15} /> {activeSession.location || 'Xưởng Tiệm Hoa Có Gu'}
+                    <MapPin size={15} /> {activeSession.location || DEFAULT_WORKSHOP_LOCATION}
                   </span>
                   <span>
                     <Users size={15} /> Sĩ số:{' '}
@@ -548,7 +568,7 @@ export default function StaffWorkshopRoster() {
                               <strong>{booking.customerName || 'Khách vãng lai'}</strong>
                               {booking.checkedInAt && (
                                 <span className="staff-checkin-time">
-                                  Check-in lúc {formatDate(booking.checkedInAt)}
+                                  Check-in lúc {formatCheckInTime(booking.checkedInAt)}
                                 </span>
                               )}
                             </div>
@@ -595,17 +615,19 @@ export default function StaffWorkshopRoster() {
                                   Xác nhận đã nhận tiền
                                 </button>
                               )}
-                              {booking.bookingStatus.toLowerCase() === 'pending' && (
-                                <button
-                                  type="button"
-                                  className="staff-btn staff-btn-primary staff-btn-sm"
-                                  style={{ background: '#059669', borderColor: '#059669' }}
-                                  onClick={() => void handleRecordPayment(booking)}
-                                  disabled={isBusy}
-                                >
-                                  <CreditCard size={14} /> Thu tiền tại quầy
-                                </button>
-                              )}
+                              {booking.bookingStatus.toLowerCase() === 'pending' &&
+                                pendingAmount <= 0 &&
+                                booking.remainingAmount > 0 && (
+                                  <button
+                                    type="button"
+                                    className="staff-btn staff-btn-primary staff-btn-sm"
+                                    style={{ background: '#059669', borderColor: '#059669' }}
+                                    onClick={() => void handleRecordPayment(booking)}
+                                    disabled={isBusy}
+                                  >
+                                    <CreditCard size={14} /> Thu tiền tại quầy
+                                  </button>
+                                )}
 
                               {canCheckIn && (
                                 <button
@@ -802,7 +824,7 @@ export default function StaffWorkshopRoster() {
                       <div className="staff-session-info-row">
                         <MapPin size={16} />
                         <span>
-                          Địa điểm: <strong>{session.location || 'Xưởng Tiệm Hoa Có Gu'}</strong>
+                          Địa điểm: <strong>{session.location || DEFAULT_WORKSHOP_LOCATION}</strong>
                         </span>
                       </div>
                       <div className="staff-session-info-row">
