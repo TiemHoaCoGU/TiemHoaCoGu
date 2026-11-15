@@ -169,6 +169,35 @@ export default function Lookup() {
       setPending(false);
     }
   }
+  async function requestRefundOrder() {
+    if (!selectedOrder || pending) return;
+    const isCompleted = lower(selectedOrder.orderStatus) === 'completed';
+    const actionLabel = isCompleted ? 'trả hàng & hoàn tiền' : 'hủy đơn & hoàn tiền';
+    const reason = window.prompt(
+      `Nhập lý do yêu cầu ${actionLabel} cho đơn hàng #${selectedOrder.orderCode} (tối đa 500 ký tự):`,
+      isCompleted
+        ? 'Sản phẩm nhận được có lỗi/hư hỏng trong vận chuyển'
+        : 'Thay đổi kế hoạch, muốn hủy đơn và hoàn tiền qua cổng thanh toán',
+    );
+    if (!reason || !reason.trim()) return;
+    setPending(true);
+    setError('');
+    try {
+      await storeRequest(`orders/${selectedOrder.id}/refund-request`, { reason: reason.trim() }, 'POST');
+      const fresh = await storeRequest<Order>(`orders/${selectedOrder.id}`);
+      setSelectedOrder(fresh);
+      setItems((xs) => xs.map((x) => (isOrder(x) && x.id === fresh.id ? fresh : x)));
+      alert(`Đã gửi yêu cầu ${actionLabel} thành công. Cửa hàng sẽ xét duyệt và xử lý.`);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Không thể gửi yêu cầu hoàn tiền. Vui lòng đăng nhập tài khoản đặt hàng.',
+      );
+    } finally {
+      setPending(false);
+    }
+  }
   async function trackDelivery(deliveryId: string) {
     if (!selectedOrder) return;
     setTrackingLoading((prev) => ({ ...prev, [deliveryId]: true }));
@@ -453,17 +482,35 @@ export default function Lookup() {
               </ul>
             )}
           </div>
-          <button
-            type="button"
-            className="button"
-            disabled={
-              pending ||
-              !['pending', 'confirmed', 'processing'].includes(lower(selectedOrder.orderStatus))
-            }
-            onClick={() => void cancelOrder()}
-          >
-            Huỷ đơn
-          </button>
+          {lower(selectedOrder.paymentStatus) === 'unpaid' ? (
+            <button
+              type="button"
+              className="button"
+              disabled={
+                pending ||
+                !['pending', 'confirmed', 'processing'].includes(lower(selectedOrder.orderStatus))
+              }
+              onClick={() => void cancelOrder()}
+            >
+              Huỷ đơn
+            </button>
+          ) : ['paid', 'partiallypaid', 'partiallyrefunded'].includes(
+              lower(selectedOrder.paymentStatus),
+            ) ? (
+            <button
+              type="button"
+              className="button"
+              style={{ background: '#b45309', borderColor: '#b45309', color: '#fff' }}
+              disabled={
+                pending || ['cancelled', 'expired'].includes(lower(selectedOrder.orderStatus))
+              }
+              onClick={() => void requestRefundOrder()}
+            >
+              {lower(selectedOrder.orderStatus) === 'completed'
+                ? 'Yêu cầu trả hàng & hoàn tiền'
+                : 'Yêu cầu hủy & hoàn tiền'}
+            </button>
+          ) : null}
         </div>
       )}
       {selectedBooking && (
