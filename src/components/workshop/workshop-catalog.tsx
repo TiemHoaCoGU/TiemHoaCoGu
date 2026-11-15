@@ -4,21 +4,32 @@ import React, { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
-  CalendarDays,
-  Clock3,
-  Users,
   Sparkles,
   ArrowRight,
   CheckCircle,
   Flower2,
 } from 'lucide-react';import type { Course } from './workshop-booking-drawer';
 import WorkshopBookingDrawer from './workshop-booking-drawer';
-import { isOpenFutureSession } from '@/lib/transaction';
+import { isOpenFutureSession, remainingSeats } from '@/lib/transaction';
 import { getWorkshopImage } from '@/lib/workshop';
 import './workshop.css';
 
 interface WorkshopCatalogProps {
   courses: Course[];
+}
+
+function formatShortDate(iso: string) {
+  try {
+    return new Intl.DateTimeFormat('vi-VN', { day: 'numeric', month: 'numeric' }).format(
+      new Date(iso),
+    );
+  } catch {
+    return iso.slice(0, 10);
+  }
+}
+
+function sessionStartMs(s: { sessionDate: string; startTime: string }) {
+  return new Date(`${s.sessionDate.slice(0, 10)}T${s.startTime}`).getTime();
 }
 
 function formatPrice(amount: number) {
@@ -87,6 +98,11 @@ export default function WorkshopCatalog({ courses }: WorkshopCatalogProps) {
         <div className="ws-grid">
           {filteredCourses.map((course, index) => {
             const openSessions = course.sessions.filter((s) => isOpenFutureSession(s));
+            // P2-2: soonest open session; the card shows its true remaining
+            // seats from the sessions already fetched — no new requests.
+            const nextOpenSession = [...openSessions].sort(
+              (a, b) => sessionStartMs(a) - sessionStartMs(b),
+            )[0];
             const imgUrl = getWorkshopImage(course, index);
             const durationText =
               course.duration > 0
@@ -151,6 +167,15 @@ export default function WorkshopCatalog({ courses }: WorkshopCatalogProps) {
                       </span>
                     </li>
                   </ul>
+
+                  {nextOpenSession ? (
+                    <p className="ws-card-seats">
+                      Còn {remainingSeats(nextOpenSession)} chỗ · ca{' '}
+                      {formatShortDate(nextOpenSession.sessionDate)}
+                    </p>
+                  ) : (
+                    <p className="ws-card-seats muted">Đã đủ chỗ</p>
+                  )}
 
                   {/* Card Footer */}
                   <div className="ws-card-footer">
