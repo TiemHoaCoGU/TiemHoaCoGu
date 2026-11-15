@@ -31,6 +31,9 @@ export function remainingSeats(session: Session): number {
   return Math.max(0, session.capacity - session.bookedSlots);
 }
 
+/** One fallback venue name for every workshop surface (drawer, checkout, ticket, roster). */
+export const DEFAULT_WORKSHOP_LOCATION = 'Xưởng Tiệm Hoa Có Gu';
+
 export function isOpenFutureSession(session: Session, now = new Date()): boolean {
   const date = new Date(`${session.sessionDate.slice(0, 10)}T${session.startTime}`);
   return (

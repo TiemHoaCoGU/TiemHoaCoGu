@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useId } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useId } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -19,7 +19,13 @@ import {
 import { storeRequest } from '@/lib/browser-api';
 import type { Booking, Session, Workshop } from '@/lib/api/client';
 import type { StorefrontWorkshop } from '@/lib/storefront';
-import { isOpenFutureSession, payloadFingerprint, remainingSeats } from '@/lib/transaction';
+import { isOpenFutureSession, payloadFingerprint, remainingSeats, DEFAULT_WORKSHOP_LOCATION } from '@/lib/transaction';
+
+// Shown when the picked session is already booked; the alert links to /tra-cuu (m4).
+const ALREADY_BOOKED_SUBMIT =
+  'Bạn đã đăng ký tham gia ca học này rồi. Vui lòng kiểm tra trong Lịch học của bạn.';
+const ALREADY_BOOKED_PICK =
+  'Bạn đã đăng ký ca này rồi. Vui lòng chọn ca khác hoặc xem trong Lịch học.';
 
 export type Course = StorefrontWorkshop & { detail?: Workshop };
 
@@ -109,32 +115,44 @@ export default function WorkshopBookingDrawer({
     };
   }, []);
 
-  // Filter open upcoming sessions
-  const availableSessions = (workshop?.sessions || []).filter((s) => isOpenFutureSession(s));
+  // Filter open upcoming sessions. Memoized so the init effect below only
+  // re-runs when the sessions actually change (C1: a fresh array every render
+  // re-ran the effect and its setError('') erased submit errors instantly).
+  const sessions = workshop?.sessions;
+  const availableSessions = useMemo(
+    () => (sessions || []).filter((s) => isOpenFutureSession(s)),
+    [sessions],
+  );
 
   // Set of session IDs already booked by this member (active: pending or confirmed)
-  const activeBookedSessionIds = new Set(
-    userBookings
-      .filter((b) => {
-        const st = (b.bookingStatus || '').toLowerCase();
-        return st !== 'cancelled' && st !== 'expired';
-      })
-      .map((b) => b.sessionId),
+  const activeBookedSessionIds = useMemo(
+    () =>
+      new Set(
+        userBookings
+          .filter((b) => {
+            const st = (b.bookingStatus || '').toLowerCase();
+            return st !== 'cancelled' && st !== 'expired';
+          })
+          .map((b) => b.sessionId),
+      ),
+    [userBookings],
   );
+
+  // Clear errors and selection only when the drawer opens for a (new) workshop.
+  const workshopId = workshop?.id;
+  useEffect(() => {
+    if (isOpen) {
+      setError('');
+      setSelectedSessionId('');
+    }
+  }, [isOpen, workshopId]);
 
   // Initialize selected session when drawer opens
   useEffect(() => {
-    if (isOpen && availableSessions.length > 0) {
+    if (isOpen && availableSessions.length > 0 && !selectedSessionId) {
       // Pick first session that is NOT already booked
       const firstUnbooked = availableSessions.find((s) => !activeBookedSessionIds.has(s.id));
-      if (firstUnbooked && !selectedSessionId) {
-        setSelectedSessionId(firstUnbooked.id);
-      } else if (!selectedSessionId) {
-        setSelectedSessionId(availableSessions[0].id);
-      }
-    }
-    if (isOpen) {
-      setError('');
+      setSelectedSessionId((firstUnbooked || availableSessions[0]).id);
     }
   }, [isOpen, availableSessions, selectedSessionId, activeBookedSessionIds]);
 
@@ -160,7 +178,7 @@ export default function WorkshopBookingDrawer({
 
     // 2. Duplicate booking check
     if (activeBookedSessionIds.has(currentSession.id)) {
-      setError('Bạn đã đăng ký tham gia ca học này rồi. Vui lòng kiểm tra trong Lịch học của bạn.');
+      setError(ALREADY_BOOKED_SUBMIT);
       return;
     }
 
@@ -342,9 +360,7 @@ export default function WorkshopBookingDrawer({
                         }}
                         onClick={() => {
                           if (alreadyBooked) {
-                            setError(
-                              'Bạn đã đăng ký ca này rồi. Vui lòng chọn ca khác hoặc xem trong Lịch học.',
-                            );
+                            setError(ALREADY_BOOKED_PICK);
                             return;
                           }
                           setSelectedSessionId(s.id);
@@ -398,7 +414,7 @@ export default function WorkshopBookingDrawer({
                           </div>
                           <div className="ws-session-venue">
                             <MapPin size={14} />
-                            <span>{s.location || 'NVH Sinh Viên (Xưởng Sáp)'}</span>
+                            <span>{s.location || DEFAULT_WORKSHOP_LOCATION}</span>
                           </div>
                         </div>
                       </div>
@@ -516,6 +532,11 @@ export default function WorkshopBookingDrawer({
               <div className="ws-error-alert" role="alert">
                 <AlertCircle size={18} />
                 <span>{error}</span>
+                {(error === ALREADY_BOOKED_SUBMIT || error === ALREADY_BOOKED_PICK) && (
+                  <Link href="/tra-cuu" style={{ whiteSpace: 'nowrap', fontWeight: 700 }}>
+                    Xem trong Lịch học
+                  </Link>
+                )}
               </div>
             )}
 
