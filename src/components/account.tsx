@@ -29,6 +29,7 @@ import {
   ExternalLink,
   ListFilter,
   ScrollText,
+  Truck,
 } from 'lucide-react';
 import { storeRequest } from '@/lib/browser-api';
 import { customStatusLabel, customStatusTone } from '@/lib/custom-order-status';
@@ -620,8 +621,8 @@ export default function Account() {
         isWithin48h = hoursUntil < 48;
       }
       refundAmountNotice = isWithin48h
-        ? `\n\n📌 Lưu ý chính sách: Ca học sẽ diễn ra trong vòng 48 giờ tới. Do tiệm đã chuẩn bị sẵn bộ hoa sáp và dụng cụ riêng cho bạn, tiệm xin phép hoàn lại 70% giá trị vé (${formatMoney(booking.totalAmount * 0.7)}) qua cổng thanh toán.`
-        : `\n\n📌 Bạn đang hủy trước ca học trên 48 giờ. Bạn sẽ được hoàn lại 100% toàn bộ tiền vé (${formatMoney(booking.totalAmount)}).`;
+        ? `\n\nLưu ý chính sách: Ca học sẽ diễn ra trong vòng 48 giờ tới. Do tiệm đã chuẩn bị sẵn bộ hoa sáp và dụng cụ riêng cho bạn, tiệm xin phép hoàn lại 70% giá trị vé (${formatMoney(booking.totalAmount * 0.7)}) qua cổng thanh toán.`
+        : `\n\nBạn đang hủy trước ca học trên 48 giờ. Bạn sẽ được hoàn lại 100% toàn bộ tiền vé (${formatMoney(booking.totalAmount)}).`;
     }
 
     if (!window.confirm(`Bạn có chắc chắn muốn hủy vé tham gia workshop này không?${refundAmountNotice}`)) return;
@@ -1616,30 +1617,30 @@ export default function Account() {
                                 }}
                               >
                                 <div>
-                                  🕒 <strong>Khởi tạo yêu cầu giữ chỗ:</strong>{' '}
+                                  <strong>Khởi tạo yêu cầu giữ chỗ:</strong>{' '}
                                   {formatDate(b.createdAt)}
                                 </div>
                                 {isConfirmed && (
                                   <div>
-                                    💳 <strong>Thanh toán:</strong> Đã ghi nhận thanh toán · Đủ điều
+                                    <strong>Thanh toán:</strong> Đã ghi nhận thanh toán · Đủ điều
                                     kiện vào lớp
                                   </div>
                                 )}
                                 {b.checkedInAt && (
                                   <div>
-                                    ✨ <strong>Điểm danh:</strong> Học viên đã check-in vào lớp lúc{' '}
+                                    <strong>Điểm danh:</strong> Học viên đã check-in vào lớp lúc{' '}
                                     {formatDate(b.checkedInAt)}
                                   </div>
                                 )}
                                 {isCancelled && (
                                   <div>
-                                    ❌ <strong>Trạng thái hủy:</strong> Khách hàng đã hủy giữ chỗ
+                                    <strong>Trạng thái hủy:</strong> Khách hàng đã hủy giữ chỗ
                                     (Ca học được giải phóng cho học viên khác)
                                   </div>
                                 )}
                                 {isExpired && (
                                   <div>
-                                    ⚠️ <strong>Trạng thái hết hạn:</strong> Quá hạn thanh toán 10
+                                    <strong>Trạng thái hết hạn:</strong> Quá hạn thanh toán 10
                                     phút, hệ thống tự động hoàn lại chỗ trống
                                   </div>
                                 )}
@@ -1734,7 +1735,9 @@ export default function Account() {
                 <article key={order.id} className="order-card">
                   <div className="order-card-header">
                     <div>
-                      <h3 className="order-code-title">Đơn hàng #{order.orderCode}</h3>
+                      <h3 className="order-code-title" title={`Đơn hàng #${order.orderCode}`}>
+                        Đơn hàng #{order.orderCode}
+                      </h3>
                       <p className="order-date">Đặt ngày {formatDate(order.createdAt)}</p>
                     </div>
                     <span className={`badge-status ${statusBadgeClass(order.orderStatus)}`}>
@@ -1763,8 +1766,9 @@ export default function Account() {
                         gap: '6px',
                       }}
                     >
+                      <Truck size={14} style={{ flexShrink: 0 }} />
                       <span>
-                        🚚 <strong>Giao Hàng Nhanh:</strong> Đơn hàng đang trên đường giao. Quý khách không thể tự hủy hoặc hoàn tiền khi bưu tá đang vận chuyển.
+                        <strong>Giao Hàng Nhanh:</strong> Đơn hàng đang trên đường giao. Quý khách không thể tự hủy hoặc hoàn tiền khi bưu tá đang vận chuyển.
                       </span>
                     </div>
                   )}
@@ -1778,7 +1782,7 @@ export default function Account() {
                         {formatMoney(order.totalAmount)}
                       </strong>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                       {canCancelOrder(order) && (
                         <button
                           type="button"
@@ -1788,6 +1792,7 @@ export default function Account() {
                             fontSize: '12px',
                             color: '#dc2626',
                             borderColor: '#fca5a5',
+                            whiteSpace: 'nowrap',
                           }}
                           onClick={() => void handleCancelOrder(order.id)}
                           disabled={busy}
@@ -1805,6 +1810,7 @@ export default function Account() {
                             color: '#b45309',
                             borderColor: '#fde68a',
                             background: '#fffbeb',
+                            whiteSpace: 'nowrap',
                           }}
                           onClick={() => void handleRequestRefund(order)}
                           disabled={busy}
@@ -1817,7 +1823,7 @@ export default function Account() {
                       <Link
                         href="/tra-cuu"
                         className="account-btn-secondary"
-                        style={{ padding: '6px 12px', fontSize: '12px' }}
+                        style={{ padding: '6px 12px', fontSize: '12px', whiteSpace: 'nowrap' }}
                       >
                         Theo dõi <ArrowRight size={14} />
                       </Link>

@@ -552,7 +552,7 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
               }}
             >
               <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: '2px' }}>
-                📌 Chính sách hủy vé &amp; hoàn tiền
+                Chính sách hủy vé &amp; hoàn tiền
               </div>
               <div>
                 • <strong>Trước ca học ≥ 48 giờ:</strong> Hoàn lại <strong>100%</strong> giá trị vé.
