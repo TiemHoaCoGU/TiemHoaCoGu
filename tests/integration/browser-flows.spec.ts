@@ -231,9 +231,7 @@ test('UI đặt riêng: tạo yêu cầu, xem và duyệt giá thật, checkout 
   await page.getByRole('button', { name: 'Tải lại trạng thái', exact: true }).click();
   await expect(page.locator('.custom-money').first()).toContainText('125.000');
   await page.getByRole('button', { name: 'Duyệt báo giá này', exact: true }).click();
-  await page
-    .getByRole('button', { name: 'Tạo đơn từ báo giá đã duyệt', exact: true })
-    .click();
+  await page.getByRole('button', { name: 'Tạo đơn từ báo giá đã duyệt', exact: true }).click();
   await expect(page.getByLabel('Số nhà, tên đường *', { exact: true })).toBeVisible();
   await page.getByLabel('Số nhà, tên đường *', { exact: true }).fill('12 UI Custom Street');
   await page.getByLabel('Tỉnh/thành phố *', { exact: true }).selectOption('1000001');
