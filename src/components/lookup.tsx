@@ -200,7 +200,7 @@ export default function Lookup() {
     if (
       !selectedBooking ||
       pending ||
-      !['held', 'confirmed', 'pending'].includes(lower(selectedBooking.bookingStatus))
+      !['confirmed', 'pending'].includes(lower(selectedBooking.bookingStatus))
     )
       return;
     setPending(true);
@@ -480,6 +480,17 @@ export default function Lookup() {
             {money(selectedBooking.depositAmount)} · Còn lại:{' '}
             {money(selectedBooking.remainingAmount)}
           </p>
+          {lower(selectedBooking.bookingStatus) === 'confirmed' &&
+            selectedBooking.remainingAmount > 0 && (
+              <p>
+                Còn thiếu {money(selectedBooking.remainingAmount)} — thanh toán nốt để nhận vé.{' '}
+                <Link
+                  href={`/thanh-toan?bookingId=${encodeURIComponent(selectedBooking.id)}`}
+                >
+                  Thanh toán phần còn lại
+                </Link>
+              </p>
+            )}
           <div style={{ margin: '12px 0' }}>
             <WorkshopTicketView bookingId={selectedBooking.id} />
           </div>
@@ -488,7 +499,7 @@ export default function Lookup() {
             className="button"
             disabled={
               pending ||
-              !['held', 'confirmed', 'pending'].includes(lower(selectedBooking.bookingStatus))
+              !['confirmed', 'pending'].includes(lower(selectedBooking.bookingStatus))
             }
             onClick={() => void cancelBooking()}
           >
