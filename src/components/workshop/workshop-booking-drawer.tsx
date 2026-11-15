@@ -19,7 +19,12 @@ import {
 import { storeRequest } from '@/lib/browser-api';
 import type { Booking, Session, Workshop } from '@/lib/api/client';
 import type { StorefrontWorkshop } from '@/lib/storefront';
-import { isOpenFutureSession, payloadFingerprint, remainingSeats, DEFAULT_WORKSHOP_LOCATION } from '@/lib/transaction';
+import {
+  isOpenFutureSession,
+  payloadFingerprint,
+  remainingSeats,
+  DEFAULT_WORKSHOP_LOCATION,
+} from '@/lib/transaction';
 
 // Shown when the picked session is already booked; the alert links to /tra-cuu (m4).
 const ALREADY_BOOKED_SUBMIT =

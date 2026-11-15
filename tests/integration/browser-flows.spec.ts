@@ -356,9 +356,7 @@ test('UI workshop: trang chi tiết hiển thị đầy đủ và mở drawer t�
   const page = await customer.context.newPage();
   await page.goto(`/workshop/${workshop.id}`);
   await page.waitForLoadState('networkidle');
-  await expect(
-    page.getByRole('heading', { name: `UI Workshop Detail ${suffix}` }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: `UI Workshop Detail ${suffix}` })).toBeVisible();
   await expect(page.getByText('Lead content for detail')).toBeVisible();
   await expect(page.getByText('Học uốn cánh sáp')).toBeVisible();
   await expect(page.getByText('Hoa sáp mang về')).toBeVisible();

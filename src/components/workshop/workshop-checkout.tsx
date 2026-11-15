@@ -95,9 +95,7 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
               { query: searchParams.toString() },
               'POST',
             );
-            const synced = await storeRequest<Booking>(`bookings/${bookingId}`).catch(
-              () => null,
-            );
+            const synced = await storeRequest<Booking>(`bookings/${bookingId}`).catch(() => null);
             if (active && synced) {
               setBooking(synced);
               setCountdown(remainingSeconds(synced.holdExpiresAt));
@@ -324,8 +322,7 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
     : '—';
   const sessionVenue = session?.location || DEFAULT_WORKSHOP_LOCATION;
   const statusLower = (booking?.bookingStatus || '').toLowerCase();
-  const isConfirmed =
-    statusLower === 'confirmed' && remainingAmount === 0;
+  const isConfirmed = statusLower === 'confirmed' && remainingAmount === 0;
   const isFree = totalAmount === 0;
   // M2: hold gone (server status or local countdown) — the payment box is
   // replaced by the expired state, so the report button can't be used.
@@ -503,13 +500,18 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
           </h2>
           <p style={{ color: '#64748b', marginBottom: '24px' }}>
             Thời gian giữ chỗ 10 phút đã hết
-            {statusLower === 'cancelled' ? ' hoặc giữ chỗ đã bị huỷ' : ''}. Vui lòng chọn ca khác
-            để đặt lại.
+            {statusLower === 'cancelled' ? ' hoặc giữ chỗ đã bị huỷ' : ''}. Vui lòng chọn ca khác để
+            đặt lại.
           </p>
           <Link
             href="/workshop"
             className="ws-btn-pay-action"
-            style={{ display: 'inline-flex', width: 'auto', padding: '12px 28px', textDecoration: 'none' }}
+            style={{
+              display: 'inline-flex',
+              width: 'auto',
+              padding: '12px 28px',
+              textDecoration: 'none',
+            }}
           >
             Chọn ca khác <ArrowRight size={16} />
           </Link>
@@ -658,11 +660,9 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
                 margin: '8px 0 0',
               }}
             >
-              Thanh toán qua cổng VNPay (sandbox). Bạn sẽ được chuyển về trang này để đối chiếu
-              kết quả.
-              {isDepositFirst
-                ? ' VNPay thu đủ phần còn lại, không áp dụng cọc trước.'
-                : ''}
+              Thanh toán qua cổng VNPay (sandbox). Bạn sẽ được chuyển về trang này để đối chiếu kết
+              quả.
+              {isDepositFirst ? ' VNPay thu đủ phần còn lại, không áp dụng cọc trước.' : ''}
             </p>
 
             <div style={{ textAlign: 'center', marginTop: '16px' }}>

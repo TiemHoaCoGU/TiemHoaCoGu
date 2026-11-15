@@ -484,9 +484,7 @@ export default function Lookup() {
             selectedBooking.remainingAmount > 0 && (
               <p>
                 Còn thiếu {money(selectedBooking.remainingAmount)} — thanh toán nốt để nhận vé.{' '}
-                <Link
-                  href={`/thanh-toan?bookingId=${encodeURIComponent(selectedBooking.id)}`}
-                >
+                <Link href={`/thanh-toan?bookingId=${encodeURIComponent(selectedBooking.id)}`}>
                   Thanh toán phần còn lại
                 </Link>
               </p>
@@ -498,8 +496,7 @@ export default function Lookup() {
             type="button"
             className="button"
             disabled={
-              pending ||
-              !['confirmed', 'pending'].includes(lower(selectedBooking.bookingStatus))
+              pending || !['confirmed', 'pending'].includes(lower(selectedBooking.bookingStatus))
             }
             onClick={() => void cancelBooking()}
           >

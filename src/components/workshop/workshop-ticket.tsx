@@ -71,8 +71,7 @@ function reasonText(ticket: WorkshopTicket) {
   if (status === 'attended') return 'Vé đã được check-in.';
   if (status === 'cancelled') return 'Đặt chỗ đã hủy, vé không còn hiệu lực.';
   if (status === 'expired') return 'Đặt chỗ đã hết hạn.';
-  if (status === 'pending')
-    return 'Chờ tiệm xác nhận thanh toán để phát hành vé QR.';
+  if (status === 'pending') return 'Chờ tiệm xác nhận thanh toán để phát hành vé QR.';
   if (status === 'confirmed') return 'Vé chưa được phát hành. Vui lòng thử tải lại sau ít phút.';
   return 'Vé chưa sẵn sàng.';
 }

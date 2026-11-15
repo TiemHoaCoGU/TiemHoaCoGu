@@ -15,11 +15,7 @@ import {
 import type { Session, Workshop } from '@/lib/api/client';
 import type { Course } from './workshop-booking-drawer';
 import WorkshopBookingDrawer from './workshop-booking-drawer';
-import {
-  DEFAULT_WORKSHOP_LOCATION,
-  isOpenFutureSession,
-  remainingSeats,
-} from '@/lib/transaction';
+import { DEFAULT_WORKSHOP_LOCATION, isOpenFutureSession, remainingSeats } from '@/lib/transaction';
 import {
   WORKSHOP_CANCEL_COPY,
   formatDurationMinutes,
@@ -67,15 +63,9 @@ export default function WorkshopDetail({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [preselectedSessionId, setPreselectedSessionId] = useState<string | undefined>(undefined);
 
-  const course: Course = useMemo(
-    () => ({ ...workshop, sessions }),
-    [workshop, sessions],
-  );
+  const course: Course = useMemo(() => ({ ...workshop, sessions }), [workshop, sessions]);
   const upcoming = useMemo(() => upcomingOpenSessions(sessions), [sessions]);
-  const openSessions = useMemo(
-    () => upcoming.filter((s) => isOpenFutureSession(s)),
-    [upcoming],
-  );
+  const openSessions = useMemo(() => upcoming.filter((s) => isOpenFutureSession(s)), [upcoming]);
   const registeredCount = useMemo(
     () => sessions.reduce((count, s) => count + (s.bookedSlots || 0), 0),
     [sessions],
@@ -146,7 +136,11 @@ export default function WorkshopDetail({
               <Link href="/workshop">Quay lại danh sách Workshop</Link>
             </div>
           ) : (
-            <button type="button" className="ws-btn-book ws-detail-cta" onClick={() => openDrawer()}>
+            <button
+              type="button"
+              className="ws-btn-book ws-detail-cta"
+              onClick={() => openDrawer()}
+            >
               Chọn ca & Giữ chỗ <ArrowRight size={16} />
             </button>
           )}
@@ -221,9 +215,7 @@ export default function WorkshopDetail({
                       <span>{s.location || DEFAULT_WORKSHOP_LOCATION}</span>
                     </div>
                   </div>
-                  <span className="ws-detail-session-price">
-                    {formatPrice(workshop.basePrice)}
-                  </span>
+                  <span className="ws-detail-session-price">{formatPrice(workshop.basePrice)}</span>
                   {seats > 0 ? (
                     <span className="ws-session-seats-badge">Còn {seats} chỗ</span>
                   ) : (

@@ -3,12 +3,8 @@
 import React, { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import {
-  Sparkles,
-  ArrowRight,
-  CheckCircle,
-  Flower2,
-} from 'lucide-react';import type { Course } from './workshop-booking-drawer';
+import { Sparkles, ArrowRight, CheckCircle, Flower2 } from 'lucide-react';
+import type { Course } from './workshop-booking-drawer';
 import WorkshopBookingDrawer from './workshop-booking-drawer';
 import { isOpenFutureSession, remainingSeats } from '@/lib/transaction';
 import { getWorkshopImage } from '@/lib/workshop';
