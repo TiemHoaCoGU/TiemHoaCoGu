@@ -209,8 +209,16 @@ export default function CustomRequestPanel({
           'POST',
         ),
       );
-      await refreshRequest();
+      // Báo giá đã duyệt rồi: hiện thông báo thành công trước, lỗi tải lại
+      // trạng thái sau đó không được biến thành "không duyệt được".
       setNotice('Đã duyệt báo giá. Bước tiếp theo: tạo đơn và thanh toán tiền cọc.');
+      try {
+        await refreshRequest();
+      } catch {
+        setNotice(
+          'Đã duyệt báo giá. Bước tiếp theo: tạo đơn và thanh toán tiền cọc. Chưa tải được trạng thái mới, hãy bấm “Tải lại trạng thái”.',
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể duyệt báo giá.');
     } finally {
@@ -248,8 +256,11 @@ export default function CustomRequestPanel({
       const fresh = await storeRequest<CustomRequest>(`custom-orders/${request.id}`, body, 'PUT');
       onChanged(fresh);
       setReviseOpen(false);
-      await load(true);
       setNotice('Đã gửi thay đổi. Báo giá cũ đã bị hủy; tiệm sẽ báo giá lại.');
+      // load() tự nuốt lỗi và chỉ đặt error: sau khi sửa thành công thì xóa
+      // lỗi tải báo giá cũ để không hiện thông báo lỗi cạnh thông báo thành công.
+      await load(true);
+      setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể cập nhật yêu cầu.');
     } finally {
@@ -272,8 +283,9 @@ export default function CustomRequestPanel({
       onChanged(
         await storeRequest<CustomRequest>(`custom-orders/${request.id}/cancel`, {}, 'POST'),
       );
-      await load(true);
       setNotice('Đã hủy yêu cầu.');
+      await load(true);
+      setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể hủy yêu cầu.');
     } finally {
@@ -326,12 +338,19 @@ export default function CustomRequestPanel({
         body,
         'POST',
       );
+      // Đơn đã tạo rồi: đóng dialog và hiện thông báo thành công trước. Lỗi
+      // tải lại trạng thái sau đó chỉ là cảnh báo nhẹ, không được báo thành
+      // "không tạo được đơn".
+      const successNotice = `Đã tạo đơn ${out.orderCode}. Đơn chưa thanh toán sẽ hết hạn sau 30 phút; hãy thanh toán tiền cọc.`;
       setCheckoutOpen(false);
-      await refreshRequest();
-      await load(true);
-      setNotice(
-        `Đã tạo đơn ${out.orderCode}. Đơn chưa thanh toán sẽ hết hạn sau 30 phút; hãy thanh toán tiền cọc.`,
-      );
+      setNotice(successNotice);
+      try {
+        await refreshRequest();
+        await load(true);
+      } catch {
+        setNotice(`${successNotice} Chưa tải được trạng thái mới, hãy bấm “Tải lại trạng thái”.`);
+      }
+      setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể tạo đơn từ báo giá.');
     } finally {

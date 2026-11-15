@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useStore } from './store-provider';
 import { storeRequest } from '@/lib/browser-api';
+import { validateDeliveryArea } from '@/lib/delivery-area';
 import type { CustomRequest, CustomRequestInput } from '@/lib/api/client';
 
 const occasions = ['Sinh nhật', 'Kỷ niệm', 'Cảm ơn', 'Xin lỗi', 'Chúc mừng', 'Không cần dịp'];
@@ -110,6 +111,15 @@ export default function CustomForm() {
   const [wardId, setWardId] = useState('');
   const [wardsLoading, setWardsLoading] = useState(false);
   const [locationError, setLocationError] = useState('');
+  // Trạng thái tải danh mục tỉnh: phân biệt "chưa tải xong" với "tải lỗi".
+  // Trước đây chỉ nhìn provinces.length nên tải lỗi cũng lặng lẽ cho qua.
+  const [locationsLoaded, setLocationsLoaded] = useState(false);
+  const [locationsFailed, setLocationsFailed] = useState(false);
+  const [locationsRetry, setLocationsRetry] = useState(0);
+  // Trạng thái tải danh mục phường: giống tỉnh, cần nút thử lại riêng vì
+  // lỗi phường không tự hết khi đổi tỉnh (tỉnh đã chọn vẫn giữ nguyên).
+  const [wardsFailed, setWardsFailed] = useState(false);
+  const [wardsRetry, setWardsRetry] = useState(0);
   const submitting = useRef(false);
   const uploaded = useRef<{ file: File; url: string } | null>(null);
   useEffect(
@@ -123,14 +133,20 @@ export default function CustomForm() {
     if (mode !== 'connected' || step !== 3) return;
     let active = true;
     setLocationError('');
+    setLocationsLoaded(false);
+    setLocationsFailed(false);
     storeRequest<ShippingArea[]>('shipping/locations/provinces')
       .then((areas) => {
         if (!active) return;
         setProvinces(areas);
+        setLocationsLoaded(true);
+        setLocationsFailed(areas.length === 0);
         if (!areas.length) setLocationError('Danh mục tỉnh GHN staging hiện chưa sẵn sàng.');
       })
       .catch((err) => {
         if (!active) return;
+        setLocationsLoaded(true);
+        setLocationsFailed(true);
         const message = err instanceof Error ? err.message : '';
         setLocationError(
           message.includes('đăng nhập')
@@ -141,23 +157,27 @@ export default function CustomForm() {
     return () => {
       active = false;
     };
-  }, [mode, step]);
+  }, [mode, step, locationsRetry]);
   useEffect(() => {
     if (!provinceId) {
       setWards([]);
+      setWardsFailed(false);
       return;
     }
     let active = true;
     setWardsLoading(true);
+    setWardsFailed(false);
     setLocationError('');
     storeRequest<ShippingArea[]>(`shipping/locations/wards?provinceId=${provinceId}`)
       .then((areas) => {
         if (!active) return;
         setWards(areas);
+        setWardsFailed(areas.length === 0);
         if (!areas.length) setLocationError('GHN không trả danh mục phường cho tỉnh đã chọn.');
       })
       .catch(() => {
         if (!active) return;
+        setWardsFailed(true);
         setLocationError('Không tải được danh mục phường GHN staging.');
       })
       .finally(() => {
@@ -166,7 +186,7 @@ export default function CustomForm() {
     return () => {
       active = false;
     };
-  }, [provinceId]);
+  }, [provinceId, wardsRetry]);
   function selectImage(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -212,8 +232,15 @@ export default function CustomForm() {
     if (current === 3 && !fields.name.trim()) return 'Hãy cho tiệm biết tên của bạn.';
     if (current === 3 && !/^[+0-9 ()-]{9,20}$/.test(fields.phone.trim()))
       return 'Số điện thoại chưa hợp lệ, bạn kiểm tra lại nhé.';
-    if (current === 3 && provinces.length > 0 && (!provinceId || !wardId))
-      return 'Chọn tỉnh và phường nhận hoa để tiệm báo đúng phí giao.';
+    if (current === 3) {
+      const areaError = validateDeliveryArea(
+        mode,
+        { loaded: locationsLoaded, failed: locationsFailed },
+        provinceId,
+        wardId,
+      );
+      if (areaError) return areaError;
+    }
     return '';
   }
   function next() {
@@ -586,6 +613,19 @@ export default function CustomForm() {
                         <p className="custom-upload-hint" role="status">
                           {locationError}
                         </p>
+                      )}
+                      {(locationsFailed || wardsFailed) && (
+                        <button
+                          type="button"
+                          className="x-btn x-btn--ghost"
+                          onClick={() =>
+                            wardsFailed
+                              ? setWardsRetry((count) => count + 1)
+                              : setLocationsRetry((count) => count + 1)
+                          }
+                        >
+                          Thử lại
+                        </button>
                       )}
                     </>
                   )}

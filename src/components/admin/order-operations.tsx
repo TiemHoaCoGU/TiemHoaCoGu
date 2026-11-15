@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Search } from 'lucide-react';
 import { storeRequest } from '@/lib/browser-api';
+import { recordOrderPayment, validatePaymentRecord } from '@/lib/admin-payments';
 import {
   AdminDialog,
   AdminEmpty,
@@ -143,6 +144,7 @@ export default function AdminOrderOperations({ readOnly = false, initialStatus =
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState<'Cash' | 'BankTransfer' | 'MoMo'>('Cash');
   const [payCode, setPayCode] = useState('');
+  const [deliveriesError, setDeliveriesError] = useState(false);
   const selectionRequest = useRef(0);
 
   const request = useCallback(
@@ -182,39 +184,58 @@ export default function AdminOrderOperations({ readOnly = false, initialStatus =
     setDialogOpen(true);
     setDetailLoading(true);
     setError('');
+    // Xóa phiếu giao của đơn trước ngay khi mở đơn mới: không bao giờ hiện
+    // phiếu cũ dưới banner lỗi của đơn mới.
+    setDeliveries([]);
+    setDeliveriesError(false);
     setPayOpen(false);
     setPayAmount(String(order.totalAmount));
     setPayCode(`COD-${order.orderCode}`);
     setDeliveryDraft((order.items ?? []).map((item) => ({ itemId: item.id, quantity: '0' })));
-    try {
-      const [fresh, orderDeliveries] = await Promise.all([
-        request<Order>(`management/orders/${order.id}`),
-        request<Delivery[]>(`orders/staff/${order.id}/deliveries`),
-      ]);
-      if (requestId !== selectionRequest.current) return;
-      setSelected(fresh);
-      setDeliveries(orderDeliveries);
-      setDeliveryDraft(fresh.items.map((item) => ({ itemId: item.id, quantity: '0' })));
-    } catch (e) {
-      if (requestId === selectionRequest.current) setError(errText(e));
-    } finally {
-      if (requestId === selectionRequest.current) setDetailLoading(false);
+    // Tải đơn và phiếu giao độc lập: một bên lỗi không được làm mất dữ liệu
+    // bên còn lại, và phiếu giao lỗi có placeholder riêng thay vì dữ liệu cũ.
+    const [orderResult, deliveriesResult] = await Promise.allSettled([
+      request<Order>(`management/orders/${order.id}`),
+      request<Delivery[]>(`orders/staff/${order.id}/deliveries`),
+    ]);
+    if (requestId !== selectionRequest.current) return;
+    if (orderResult.status === 'fulfilled') {
+      setSelected(orderResult.value);
+      setDeliveryDraft(orderResult.value.items.map((item) => ({ itemId: item.id, quantity: '0' })));
+    } else {
+      setError(errText(orderResult.reason));
     }
+    if (deliveriesResult.status === 'fulfilled') {
+      setDeliveries(deliveriesResult.value);
+      setDeliveriesError(false);
+    } else {
+      setDeliveries([]);
+      setDeliveriesError(true);
+    }
+    setDetailLoading(false);
   };
 
   const refreshSelected = async (orderId: string) => {
     const requestId = ++selectionRequest.current;
-    try {
-      const [fresh, orderDeliveries] = await Promise.all([
-        request<Order>(`management/orders/${orderId}`),
-        request<Delivery[]>(`orders/staff/${orderId}/deliveries`),
-      ]);
-      if (requestId !== selectionRequest.current) return;
-      setSelected(fresh);
-      setDeliveries(orderDeliveries);
-      setDeliveryDraft(fresh.items.map((item) => ({ itemId: item.id, quantity: '0' })));
-    } catch (e) {
-      if (requestId === selectionRequest.current) setError(errText(e));
+    const [orderResult, deliveriesResult] = await Promise.allSettled([
+      request<Order>(`management/orders/${orderId}`),
+      request<Delivery[]>(`orders/staff/${orderId}/deliveries`),
+    ]);
+    if (requestId !== selectionRequest.current) return;
+    if (orderResult.status === 'fulfilled') {
+      setSelected(orderResult.value);
+      setDeliveryDraft(orderResult.value.items.map((item) => ({ itemId: item.id, quantity: '0' })));
+    } else {
+      setError(errText(orderResult.reason));
+    }
+    if (deliveriesResult.status === 'fulfilled') {
+      setDeliveries(deliveriesResult.value);
+      setDeliveriesError(false);
+    } else {
+      // Phiếu cũ không còn đáng tin sau khi tải lại lỗi: xóa thay vì để
+      // nhân viên thao tác trên dữ liệu đã lỗi thời.
+      setDeliveries([]);
+      setDeliveriesError(true);
     }
   };
 
@@ -273,12 +294,9 @@ export default function AdminOrderOperations({ readOnly = false, initialStatus =
   const recordPayment = async () => {
     if (!selected || readOnly || busy) return;
     const amount = Number(payAmount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setError('Số tiền thanh toán phải lớn hơn 0.');
-      return;
-    }
-    if (!payCode.trim()) {
-      setError('Nhập mã giao dịch để tránh ghi trùng.');
+    const inputError = validatePaymentRecord(amount, payCode);
+    if (inputError) {
+      setError(inputError);
       return;
     }
     if (
@@ -292,11 +310,12 @@ export default function AdminOrderOperations({ readOnly = false, initialStatus =
     setBusy(true);
     setError('');
     try {
-      await request(
-        `payments/order/${selected.id}`,
-        { paymentMethod: payMethod, transactionCode: payCode.trim(), amount },
-        'POST',
-      );
+      const submitted = await recordOrderPayment(request, selected.id, {
+        amount,
+        method: payMethod,
+        transactionCode: payCode.trim(),
+      });
+      if (!submitted) return;
       setNotice(`Đã ghi nhận thanh toán ${money(amount)} cho đơn ${selected.orderCode}.`);
       setPayOpen(false);
       await Promise.all([loadOrders(), refreshSelected(selected.id)]);
@@ -956,7 +975,18 @@ export default function AdminOrderOperations({ readOnly = false, initialStatus =
                   <h3>Phiếu giao</h3>
                   <span className="admin-muted">{deliveries.length} phiếu</span>
                 </div>
-                {deliveries.length === 0 ? (
+                {deliveriesError ? (
+                  <div className="admin-error" role="alert">
+                    <span>Chưa tải được phiếu giao.</span>{' '}
+                    <button
+                      className="button button-outline"
+                      type="button"
+                      onClick={() => void refreshSelected(selected.id)}
+                    >
+                      Thử lại
+                    </button>
+                  </div>
+                ) : deliveries.length === 0 ? (
                   <p className="admin-muted">Chưa có phiếu giao.</p>
                 ) : (
                   <ul className="admin-ord-deliveries">
