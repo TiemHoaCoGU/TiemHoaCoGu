@@ -116,11 +116,16 @@ export const getStorefront = cache(async (): Promise<Storefront> => {
     const workshops = await workshopsApi()
       .list()
       .then(async (items) =>
+        // M4: one workshop's session fetch failing must not drop the whole
+        // catalog — that workshop just shows with no sessions.
         Promise.all(
-          items.map(async (item) => ({
-            ...item,
-            sessions: await workshopsApi().sessions(item.id),
-          })),
+          items.map(async (item) => {
+            try {
+              return { ...item, sessions: await workshopsApi().sessions(item.id) };
+            } catch {
+              return { ...item, sessions: [] };
+            }
+          }),
         ),
       )
       .catch(() => undefined);

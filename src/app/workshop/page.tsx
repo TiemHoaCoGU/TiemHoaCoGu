@@ -3,7 +3,6 @@ import Image from 'next/image';
 import { Sparkles, HeartHandshake, ShieldCheck, Clock3, ArrowDown } from 'lucide-react';
 import { PageIntro } from '@/components/site';
 import WorkshopCatalog from '@/components/workshop/workshop-catalog';
-import { workshopsApi, type Workshop } from '@/lib/api/client';
 import { getStorefront } from '@/lib/storefront';
 import type { Course } from '@/components/workshop/workshop-booking-drawer';
 import { isOpenFutureSession } from '@/lib/transaction';
@@ -17,18 +16,8 @@ export const metadata: Metadata = {
 export default async function WorkshopPage() {
   const storefront = await getStorefront();
   const connected = storefront.mode === 'connected' && storefront.workshops !== undefined;
-  const courses: Course[] =
-    connected && storefront.workshops
-      ? await Promise.all(
-          storefront.workshops.map(async (course) => {
-            try {
-              return { ...course, detail: await workshopsApi().workshop(course.id) };
-            } catch {
-              return course;
-            }
-          }),
-        )
-      : [];
+  // m1: the per-course detail fetch was unused (Course.detail is never read).
+  const courses: Course[] = connected && storefront.workshops ? storefront.workshops : [];
 
   const totalOpenSessions = courses.reduce(
     (count, course) =>
@@ -200,7 +189,34 @@ export default async function WorkshopPage() {
       </section>
 
       {/* Workshop Catalog & In-Place Booking Drawer */}
-      <WorkshopCatalog courses={courses} />
+      {storefront.mode === 'unavailable' ? (
+        <section
+          style={{ maxWidth: '1360px', margin: '0 auto 60px', padding: '0 20px' }}
+          aria-label="Không tải được danh sách workshop"
+        >
+          <div
+            style={{
+              background: '#ffffff',
+              border: '1px solid #e8ebe4',
+              borderRadius: '20px',
+              padding: '48px 24px',
+              textAlign: 'center',
+            }}
+          >
+            <h3 style={{ fontSize: '18px', color: '#1c2326', marginBottom: '8px' }}>
+              Không tải được danh sách workshop
+            </h3>
+            <p style={{ fontSize: '14px', color: '#64748b', marginBottom: '24px' }}>
+              {storefront.error || 'Dịch vụ tạm thời không khả dụng. Vui lòng thử lại sau.'}
+            </p>
+            <a className="button" href="/workshop">
+              Thử tải lại danh sách
+            </a>
+          </div>
+        </section>
+      ) : (
+        <WorkshopCatalog courses={courses} />
+      )}
     </div>
   );
 }
