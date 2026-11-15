@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useId } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useId } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -19,7 +19,18 @@ import {
 import { storeRequest } from '@/lib/browser-api';
 import type { Booking, Session, Workshop } from '@/lib/api/client';
 import type { StorefrontWorkshop } from '@/lib/storefront';
-import { isOpenFutureSession, payloadFingerprint, remainingSeats } from '@/lib/transaction';
+import {
+  isOpenFutureSession,
+  payloadFingerprint,
+  remainingSeats,
+  DEFAULT_WORKSHOP_LOCATION,
+} from '@/lib/transaction';
+
+// Shown when the picked session is already booked; the alert links to /tra-cuu (m4).
+const ALREADY_BOOKED_SUBMIT =
+  'Bạn đã đăng ký tham gia ca học này rồi. Vui lòng kiểm tra trong Lịch học của bạn.';
+const ALREADY_BOOKED_PICK =
+  'Bạn đã đăng ký ca này rồi. Vui lòng chọn ca khác hoặc xem trong Lịch học.';
 
 export type Course = StorefrontWorkshop & { detail?: Workshop };
 
@@ -36,6 +47,8 @@ interface BookingDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   imageUrl?: string;
+  /** Session to preselect when the drawer opens (e.g. picked on the detail page). */
+  preselectedSessionId?: string;
 }
 
 function formatDate(iso: string) {
@@ -61,6 +74,7 @@ export default function WorkshopBookingDrawer({
   isOpen,
   onClose,
   imageUrl = '/images/workshop-hands.webp',
+  preselectedSessionId,
 }: BookingDrawerProps) {
   const router = useRouter();
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
@@ -68,6 +82,9 @@ export default function WorkshopBookingDrawer({
   const [customerName, setCustomerName] = useState<string>('');
   const [customerPhone, setCustomerPhone] = useState<string>('');
   const [customerEmail, setCustomerEmail] = useState<string>('');
+  // P2-3: first-payment choice — full amount or 30% deposit (manual transfer
+  // only; VNPay always charges the full remaining amount at checkout).
+  const [payChoice, setPayChoice] = useState<'full' | 'deposit'>('full');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userBookings, setUserBookings] = useState<Booking[]>([]);
   const [authChecked, setAuthChecked] = useState(false);
@@ -109,34 +126,53 @@ export default function WorkshopBookingDrawer({
     };
   }, []);
 
-  // Filter open upcoming sessions
-  const availableSessions = (workshop?.sessions || []).filter((s) => isOpenFutureSession(s));
-
-  // Set of session IDs already booked by this member (active: pending or confirmed)
-  const activeBookedSessionIds = new Set(
-    userBookings
-      .filter((b) => {
-        const st = (b.bookingStatus || '').toLowerCase();
-        return st !== 'cancelled' && st !== 'expired';
-      })
-      .map((b) => b.sessionId),
+  // Filter open upcoming sessions. Memoized so the init effect below only
+  // re-runs when the sessions actually change (C1: a fresh array every render
+  // re-ran the effect and its setError('') erased submit errors instantly).
+  const sessions = workshop?.sessions;
+  const availableSessions = useMemo(
+    () => (sessions || []).filter((s) => isOpenFutureSession(s)),
+    [sessions],
   );
 
-  // Initialize selected session when drawer opens
+  // Set of session IDs already booked by this member (active: pending or confirmed)
+  const activeBookedSessionIds = useMemo(
+    () =>
+      new Set(
+        userBookings
+          .filter((b) => {
+            const st = (b.bookingStatus || '').toLowerCase();
+            return st !== 'cancelled' && st !== 'expired';
+          })
+          .map((b) => b.sessionId),
+      ),
+    [userBookings],
+  );
+
+  // Clear errors and selection only when the drawer opens for a (new) workshop.
+  const workshopId = workshop?.id;
   useEffect(() => {
-    if (isOpen && availableSessions.length > 0) {
-      // Pick first session that is NOT already booked
-      const firstUnbooked = availableSessions.find((s) => !activeBookedSessionIds.has(s.id));
-      if (firstUnbooked && !selectedSessionId) {
-        setSelectedSessionId(firstUnbooked.id);
-      } else if (!selectedSessionId) {
-        setSelectedSessionId(availableSessions[0].id);
-      }
-    }
     if (isOpen) {
       setError('');
+      setSelectedSessionId('');
+      setPayChoice('full');
     }
-  }, [isOpen, availableSessions, selectedSessionId, activeBookedSessionIds]);
+  }, [isOpen, workshopId]);
+
+  // Initialize selected session when drawer opens: prefer the preselected
+  // session (detail page pick) when it is open and not already booked.
+  useEffect(() => {
+    if (isOpen && availableSessions.length > 0 && !selectedSessionId) {
+      const preselected = preselectedSessionId
+        ? availableSessions.find(
+            (s) => s.id === preselectedSessionId && !activeBookedSessionIds.has(s.id),
+          )
+        : undefined;
+      // Pick first session that is NOT already booked
+      const firstUnbooked = availableSessions.find((s) => !activeBookedSessionIds.has(s.id));
+      setSelectedSessionId((preselected || firstUnbooked || availableSessions[0]).id);
+    }
+  }, [isOpen, availableSessions, selectedSessionId, activeBookedSessionIds, preselectedSessionId]);
 
   if (!isOpen || !workshop) return null;
 
@@ -147,6 +183,13 @@ export default function WorkshopBookingDrawer({
     ? activeBookedSessionIds.has(currentSession.id)
     : false;
   const totalPrice = workshop.basePrice * ticketCount;
+  // BE rule (ValidateBookingPayment): a booking starting within 24h must be
+  // paid in full on the first payment — the deposit option is not available.
+  const sessionStartsWithin24h = currentSession
+    ? new Date(`${currentSession.sessionDate.slice(0, 10)}T${currentSession.startTime}`).getTime() -
+        Date.now() <
+      24 * 60 * 60 * 1000
+    : false;
 
   async function handleBookWorkshop(e: React.FormEvent) {
     e.preventDefault();
@@ -160,7 +203,7 @@ export default function WorkshopBookingDrawer({
 
     // 2. Duplicate booking check
     if (activeBookedSessionIds.has(currentSession.id)) {
-      setError('Bạn đã đăng ký tham gia ca học này rồi. Vui lòng kiểm tra trong Lịch học của bạn.');
+      setError(ALREADY_BOOKED_SUBMIT);
       return;
     }
 
@@ -236,7 +279,9 @@ export default function WorkshopBookingDrawer({
         'POST',
       );
       // Seamlessly redirect to Payment Checkout page
-      router.push(`/thanh-toan?bookingId=${res.id}`);
+      router.push(
+        `/thanh-toan?bookingId=${res.id}${payChoice === 'deposit' ? '&pay=deposit' : ''}`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể thực hiện giữ chỗ.');
       setSubmitting(false);
@@ -342,9 +387,7 @@ export default function WorkshopBookingDrawer({
                         }}
                         onClick={() => {
                           if (alreadyBooked) {
-                            setError(
-                              'Bạn đã đăng ký ca này rồi. Vui lòng chọn ca khác hoặc xem trong Lịch học.',
-                            );
+                            setError(ALREADY_BOOKED_PICK);
                             return;
                           }
                           setSelectedSessionId(s.id);
@@ -398,7 +441,7 @@ export default function WorkshopBookingDrawer({
                           </div>
                           <div className="ws-session-venue">
                             <MapPin size={14} />
-                            <span>{s.location || 'NVH Sinh Viên (Xưởng Sáp)'}</span>
+                            <span>{s.location || DEFAULT_WORKSHOP_LOCATION}</span>
                           </div>
                         </div>
                       </div>
@@ -448,10 +491,66 @@ export default function WorkshopBookingDrawer({
               </div>
             </div>
 
-            {/* Step 3: Thông tin người tham gia */}
+            {/* Step 3: Hình thức thanh toán lần đầu (P2-3). The deposit amount
+                itself is never computed here — it comes from the hold response
+                (BookingDto.DepositAmount) and is shown at checkout. */}
+            {currentSession && totalPrice > 0 ? (
+              <div>
+                <div className="ws-drawer-section-title">
+                  <span>3. Thanh toán lần đầu</span>
+                </div>
+                <div className="ws-sessions-list">
+                  <div
+                    className={`ws-session-option ${payChoice === 'full' ? 'selected' : ''}`}
+                    onClick={() => setPayChoice('full')}
+                  >
+                    <div className="ws-session-radio">
+                      {payChoice === 'full' && <div className="ws-session-radio-inner" />}
+                    </div>
+                    <div className="ws-session-details">
+                      <div className="ws-session-date-time">
+                        <span className="ws-session-datetime-txt">
+                          Trả đủ {formatPrice(totalPrice)}
+                        </span>
+                      </div>
+                      <div className="ws-session-venue">
+                        <span>Thanh toán toàn bộ ngay lần đầu, nhận vé sau khi tiệm xác nhận.</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    className={`ws-session-option ${payChoice === 'deposit' ? 'selected' : ''}`}
+                    style={
+                      sessionStartsWithin24h ? { opacity: 0.55, cursor: 'not-allowed' } : undefined
+                    }
+                    onClick={() => {
+                      if (!sessionStartsWithin24h) setPayChoice('deposit');
+                    }}
+                  >
+                    <div className="ws-session-radio">
+                      {payChoice === 'deposit' && <div className="ws-session-radio-inner" />}
+                    </div>
+                    <div className="ws-session-details">
+                      <div className="ws-session-date-time">
+                        <span className="ws-session-datetime-txt">Cọc trước 30%</span>
+                      </div>
+                      <div className="ws-session-venue">
+                        <span>
+                          {sessionStartsWithin24h
+                            ? 'Ca học trong 24 giờ tới cần thanh toán đủ ngay lần đầu.'
+                            : 'Số tiền cọc chính xác hiện ở trang thanh toán. Trả nốt trước giờ học để nhận vé.'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Step 4: Thông tin người tham gia */}
             <div>
               <div className="ws-drawer-section-title">
-                <span>3. Thông tin học viên</span>
+                <span>4. Thông tin học viên</span>
               </div>
 
               {authChecked && currentUser ? (
@@ -516,6 +615,11 @@ export default function WorkshopBookingDrawer({
               <div className="ws-error-alert" role="alert">
                 <AlertCircle size={18} />
                 <span>{error}</span>
+                {(error === ALREADY_BOOKED_SUBMIT || error === ALREADY_BOOKED_PICK) && (
+                  <Link href="/tra-cuu" style={{ whiteSpace: 'nowrap', fontWeight: 700 }}>
+                    Xem trong Lịch học
+                  </Link>
+                )}
               </div>
             )}
 
@@ -543,6 +647,10 @@ export default function WorkshopBookingDrawer({
                     'Bạn đã đăng ký ca học này'
                   ) : freeSeats <= 0 ? (
                     'Ca học đã hết chỗ'
+                  ) : payChoice === 'deposit' ? (
+                    <>
+                      Tiếp tục thanh toán · Cọc trước 30% <ArrowRight size={17} />
+                    </>
                   ) : (
                     <>
                       Tiếp tục thanh toán · {formatPrice(totalPrice)} <ArrowRight size={17} />

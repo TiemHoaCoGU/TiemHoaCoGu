@@ -2,31 +2,30 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import {
-  CalendarDays,
-  Clock3,
-  Users,
-  Sparkles,
-  ArrowRight,
-  CheckCircle,
-  Flower2,
-} from 'lucide-react';
+import Link from 'next/link';
+import { Sparkles, ArrowRight, CheckCircle, Flower2 } from 'lucide-react';
 import type { Course } from './workshop-booking-drawer';
 import WorkshopBookingDrawer from './workshop-booking-drawer';
-import { isOpenFutureSession } from '@/lib/transaction';
+import { isOpenFutureSession, remainingSeats } from '@/lib/transaction';
+import { getWorkshopImage } from '@/lib/workshop';
 import './workshop.css';
 
 interface WorkshopCatalogProps {
   courses: Course[];
 }
 
-function getWorkshopImage(course: Course, index: number): string {
-  const name = course.name.toLowerCase();
-  const cat = (course.category || '').toLowerCase();
-  if (name.includes('cơ bản') || cat.includes('cơ bản')) return '/images/ws-club.webp';
-  if (name.includes('nâng cao') || cat.includes('chuyên sâu')) return '/images/ws-studio.webp';
-  if (index % 2 === 0) return '/images/workshop-hands.webp';
-  return '/images/ws-gallery.webp';
+function formatShortDate(iso: string) {
+  try {
+    return new Intl.DateTimeFormat('vi-VN', { day: 'numeric', month: 'numeric' }).format(
+      new Date(iso),
+    );
+  } catch {
+    return iso.slice(0, 10);
+  }
+}
+
+function sessionStartMs(s: { sessionDate: string; startTime: string }) {
+  return new Date(`${s.sessionDate.slice(0, 10)}T${s.startTime}`).getTime();
 }
 
 function formatPrice(amount: number) {
@@ -95,6 +94,11 @@ export default function WorkshopCatalog({ courses }: WorkshopCatalogProps) {
         <div className="ws-grid">
           {filteredCourses.map((course, index) => {
             const openSessions = course.sessions.filter((s) => isOpenFutureSession(s));
+            // P2-2: soonest open session; the card shows its true remaining
+            // seats from the sessions already fetched — no new requests.
+            const nextOpenSession = [...openSessions].sort(
+              (a, b) => sessionStartMs(a) - sessionStartMs(b),
+            )[0];
             const imgUrl = getWorkshopImage(course, index);
             const durationText =
               course.duration > 0
@@ -108,29 +112,37 @@ export default function WorkshopCatalog({ courses }: WorkshopCatalogProps) {
             return (
               <article key={course.id} className="ws-card-item">
                 {/* Image Cover */}
-                <div className="ws-card-image-box">
-                  <Image
-                    src={imgUrl}
-                    alt={course.name}
-                    fill
-                    sizes="(max-width: 768px) 100vw, 420px"
-                  />
-                  <div className="ws-card-badges">
-                    <span className="ws-badge-cat">{course.category || 'Workshop Sáp'}</span>
-                    {openSessions.length > 0 ? (
-                      <span className="ws-badge-open">
-                        <span className="ws-badge-dot" />
-                        {openSessions.length} ca đang mở
-                      </span>
-                    ) : (
-                      <span className="ws-badge-open muted">Sắp mở ca mới</span>
-                    )}
+                <Link
+                  href={`/workshop/${course.id}`}
+                  className="ws-card-image-link"
+                  aria-label={`Xem chi tiết ${course.name}`}
+                >
+                  <div className="ws-card-image-box">
+                    <Image
+                      src={imgUrl}
+                      alt={course.name}
+                      fill
+                      sizes="(max-width: 768px) 100vw, 420px"
+                    />
+                    <div className="ws-card-badges">
+                      <span className="ws-badge-cat">{course.category || 'Workshop Sáp'}</span>
+                      {openSessions.length > 0 ? (
+                        <span className="ws-badge-open">
+                          <span className="ws-badge-dot" />
+                          {openSessions.length} ca đang mở
+                        </span>
+                      ) : (
+                        <span className="ws-badge-open muted">Sắp mở ca mới</span>
+                      )}
+                    </div>
                   </div>
-                </div>
+                </Link>
 
                 {/* Card Content */}
                 <div className="ws-card-body">
-                  <h3 className="ws-card-title">{course.name}</h3>
+                  <h3 className="ws-card-title">
+                    <Link href={`/workshop/${course.id}`}>{course.name}</Link>
+                  </h3>
                   {course.description?.trim() ? (
                     <p className="ws-card-desc">{course.description.trim()}</p>
                   ) : null}
@@ -151,6 +163,15 @@ export default function WorkshopCatalog({ courses }: WorkshopCatalogProps) {
                       </span>
                     </li>
                   </ul>
+
+                  {nextOpenSession ? (
+                    <p className="ws-card-seats">
+                      Còn {remainingSeats(nextOpenSession)} chỗ · ca{' '}
+                      {formatShortDate(nextOpenSession.sessionDate)}
+                    </p>
+                  ) : (
+                    <p className="ws-card-seats muted">Đã đủ chỗ</p>
+                  )}
 
                   {/* Card Footer */}
                   <div className="ws-card-footer">
