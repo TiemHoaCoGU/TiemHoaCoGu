@@ -12,6 +12,7 @@ type OrderResult = {
   id?: string;
   orderCode?: string;
   totalAmount?: number;
+  discountAmount?: number;
   paymentStatus?: string;
   orderStatus?: string;
 };
@@ -43,6 +44,8 @@ export default function Checkout() {
   const [wardId, setWardId] = useState('');
   const [wardsLoading, setWardsLoading] = useState(false);
   const [locationError, setLocationError] = useState('');
+  const [voucherCode, setVoucherCode] = useState('');
+  const [voucherApplied, setVoucherApplied] = useState(false);
   const attempt = useRef<{ fingerprint: string; payload: CheckoutPayload } | null>(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -167,6 +170,7 @@ export default function Checkout() {
       receiverPhone: String(form.get('phone') || ''),
       receiverEmail: String(form.get('email') || '') || undefined,
       note: String(form.get('note') || '') || undefined,
+      voucherCode: voucherCode.trim() ? voucherCode.trim() : undefined,
       items,
       shippingQuoteId,
       idempotencyKey: '',
@@ -559,6 +563,12 @@ export default function Checkout() {
               Trạng thái: {result.orderStatus || 'Đang cập nhật'} · Thanh toán:{' '}
               {result.paymentStatus || 'Chưa xác nhận'}.
             </p>
+            {result.discountAmount !== undefined && result.discountAmount > 0 && (
+              <p>
+                Giảm giá voucher:{' '}
+                <strong style={{ color: '#059669' }}>-{money(result.discountAmount)}</strong>.
+              </p>
+            )}
             {result.totalAmount !== undefined && (
               <p>
                 Tổng do backend xác nhận: <strong>{money(result.totalAmount)}</strong>.
@@ -624,6 +634,92 @@ export default function Checkout() {
             <span>{money(line.quantity * product.price)}</span>
           </div>
         ))}
+        {/* Khung nhập Voucher / Mã giảm giá */}
+        <div
+          style={{
+            margin: '20px 0 16px',
+            padding: '14px 16px',
+            background: '#fafaf9',
+            border: '1px solid #e7e5e4',
+            borderRadius: 12,
+          }}
+        >
+          <label
+            htmlFor="checkout-voucher-input"
+            style={{
+              display: 'block',
+              fontSize: 13,
+              fontWeight: 600,
+              marginBottom: 8,
+              color: '#1c2326',
+            }}
+          >
+            Mã ưu đãi / Voucher
+          </label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              id="checkout-voucher-input"
+              type="text"
+              placeholder="Nhập mã giảm giá..."
+              value={voucherCode}
+              onChange={(e) => {
+                setVoucherCode(e.target.value.toUpperCase());
+                setVoucherApplied(false);
+                attempt.current = null;
+              }}
+              disabled={pending || !!result}
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                fontSize: 13,
+                textTransform: 'uppercase',
+                border: '1px solid #d6d3d1',
+                borderRadius: 8,
+                background: '#fff',
+                fontFamily: 'inherit',
+              }}
+            />
+            {voucherCode.trim() && (
+              <button
+                type="button"
+                className="button"
+                disabled={pending || !!result}
+                style={{
+                  padding: '8px 14px',
+                  fontSize: 12,
+                  whiteSpace: 'nowrap',
+                  borderRadius: 8,
+                }}
+                onClick={() => {
+                  if (voucherApplied) {
+                    setVoucherCode('');
+                    setVoucherApplied(false);
+                    attempt.current = null;
+                  } else {
+                    setVoucherApplied(true);
+                    attempt.current = null;
+                  }
+                }}
+              >
+                {voucherApplied ? 'Bỏ chọn' : 'Áp dụng'}
+              </button>
+            )}
+          </div>
+          {voucherApplied && (
+            <p
+              style={{
+                margin: '8px 0 0',
+                fontSize: 12,
+                color: '#059669',
+                lineHeight: 1.4,
+              }}
+            >
+              ✓ Mã <strong>{voucherCode}</strong> sẽ được hệ thống đối chiếu và trừ tiền khi tạo
+              đơn.
+            </p>
+          )}
+        </div>
+
         <div className="checkout-totals">
           <div>
             <span>Tạm tính</span>
@@ -633,10 +729,23 @@ export default function Checkout() {
             <span>Phí giao hoa</span>
             <span>{shippingAmount === undefined ? 'Chưa xác định' : money(shippingAmount)}</span>
           </div>
+          {result?.discountAmount !== undefined && result.discountAmount > 0 ? (
+            <div style={{ color: '#059669' }}>
+              <span>Giảm giá voucher</span>
+              <span>-{money(result.discountAmount)}</span>
+            </div>
+          ) : voucherApplied && voucherCode.trim() ? (
+            <div style={{ color: '#059669', fontSize: 13 }}>
+              <span>Mã giảm giá ({voucherCode.trim()})</span>
+              <span>Được tính khi tạo đơn</span>
+            </div>
+          ) : null}
           <div className="grand-total">
             <span>Tổng tạm tính</span>
             <strong>
-              {shippingAmount === undefined ? 'Chưa xác định' : money(total + shippingAmount)}
+              {shippingAmount === undefined
+                ? 'Chưa xác định'
+                : money(Math.max(0, total + shippingAmount - (result?.discountAmount ?? 0)))}
             </strong>
           </div>
         </div>
