@@ -184,6 +184,20 @@ test('UI đặt riêng: tạo yêu cầu, xem và duyệt giá thật, checkout 
   const p = await product(manager.request, true);
   const customer = await authenticatedContext(browser);
   const page = await customer.context.newPage();
+  await page.route('**/api/store/shipping/locations/provinces', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{ id: 1000001, name: 'Hồ Chí Minh', parentId: 1 }]),
+    }),
+  );
+  await page.route('**/api/store/shipping/locations/wards**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{ id: 1003580, name: 'Phường Thủ Đức', parentId: 1000001 }]),
+    }),
+  );
   await page.goto('/dat-rieng');
   await page.getByRole('button', { name: 'Sinh nhật' }).click();
   await page.getByRole('button', { name: '300.000 – 500.000 ₫' }).click();
@@ -201,7 +215,7 @@ test('UI đặt riêng: tạo yêu cầu, xem và duyệt giá thật, checkout 
   );
   await page.getByRole('button', { name: 'Gửi yêu cầu báo giá', exact: true }).click();
   const created = (await (await ok(await createdResponse)).json()) as { id: string };
-  await expect(page.locator('.form-status[role="status"]').first()).toContainText(/BÁO GIÁ/);
+  await expect(page.getByText('YÊU CẦU ĐẶT RIÊNG').first()).toBeVisible();
   await ok(
     await manager.request.post(`/api/store/custom-orders/${created.id}/quote`, {
       headers,
@@ -214,17 +228,22 @@ test('UI đặt riêng: tạo yêu cầu, xem và duyệt giá thật, checkout 
       },
     }),
   );
-  await page.getByRole('button', { name: 'Tải lại báo giá', exact: true }).click();
-  await expect(page.getByText(/Tiền cọc theo báo giá:/)).toContainText('125.000');
+  await page.getByRole('button', { name: 'Tải lại trạng thái', exact: true }).click();
+  await expect(page.locator('.custom-money').first()).toContainText('125.000');
   await page.getByRole('button', { name: 'Duyệt báo giá này', exact: true }).click();
-  await expect(page.getByLabel('Địa chỉ giao hàng *', { exact: true })).toBeVisible();
-  await page.getByLabel('Địa chỉ giao hàng *', { exact: true }).fill('12 UI Custom Street');
+  await page
+    .getByRole('button', { name: 'Tạo đơn từ báo giá đã duyệt', exact: true })
+    .click();
+  await expect(page.getByLabel('Số nhà, tên đường *', { exact: true })).toBeVisible();
+  await page.getByLabel('Số nhà, tên đường *', { exact: true }).fill('12 UI Custom Street');
+  await page.getByLabel('Tỉnh/thành phố *', { exact: true }).selectOption('1000001');
+  await page.getByLabel('Phường/xã *', { exact: true }).selectOption('1003580');
   const checkoutResponse = page.waitForResponse(
     (r) =>
       r.url().endsWith(`/api/store/custom-orders/${created.id}/checkout`) &&
       r.request().method() === 'POST',
   );
-  await page.getByRole('button', { name: 'Tạo đơn đặt riêng', exact: true }).click();
+  await page.getByRole('button', { name: 'Tạo đơn', exact: true }).click();
   const result = (await (await ok(await checkoutResponse)).json()) as {
     orderId: string;
     orderCode: string;
@@ -233,9 +252,7 @@ test('UI đặt riêng: tạo yêu cầu, xem và duyệt giá thật, checkout 
     await ok(await customer.api.get(`/api/store/orders/${result.orderId}`))
   ).json()) as { paymentStatus: string; totalAmount: number };
   expect(order).toMatchObject({ paymentStatus: 'Unpaid', totalAmount: 250000 });
-  await expect(page.locator('.form-status[role="status"]').last()).toContainText(
-    /Chưa xác nhận thu tiền/,
-  );
+  await expect(page.locator('.form-status[role="status"]').last()).toContainText(/Đã tạo đơn/);
   await page.goto('/tra-cuu');
   await expect(
     page.getByRole('heading', { name: 'Món quà của bạn, đang ở đâu?', exact: true }),
