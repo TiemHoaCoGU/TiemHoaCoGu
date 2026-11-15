@@ -77,6 +77,9 @@ export default function WorkshopBookingDrawer({
   const [customerName, setCustomerName] = useState<string>('');
   const [customerPhone, setCustomerPhone] = useState<string>('');
   const [customerEmail, setCustomerEmail] = useState<string>('');
+  // P2-3: first-payment choice — full amount or 30% deposit (manual transfer
+  // only; VNPay always charges the full remaining amount at checkout).
+  const [payChoice, setPayChoice] = useState<'full' | 'deposit'>('full');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userBookings, setUserBookings] = useState<Booking[]>([]);
   const [authChecked, setAuthChecked] = useState(false);
@@ -147,6 +150,7 @@ export default function WorkshopBookingDrawer({
     if (isOpen) {
       setError('');
       setSelectedSessionId('');
+      setPayChoice('full');
     }
   }, [isOpen, workshopId]);
 
@@ -174,6 +178,13 @@ export default function WorkshopBookingDrawer({
     ? activeBookedSessionIds.has(currentSession.id)
     : false;
   const totalPrice = workshop.basePrice * ticketCount;
+  // BE rule (ValidateBookingPayment): a booking starting within 24h must be
+  // paid in full on the first payment — the deposit option is not available.
+  const sessionStartsWithin24h = currentSession
+    ? new Date(`${currentSession.sessionDate.slice(0, 10)}T${currentSession.startTime}`).getTime() -
+        Date.now() <
+      24 * 60 * 60 * 1000
+    : false;
 
   async function handleBookWorkshop(e: React.FormEvent) {
     e.preventDefault();
@@ -263,7 +274,9 @@ export default function WorkshopBookingDrawer({
         'POST',
       );
       // Seamlessly redirect to Payment Checkout page
-      router.push(`/thanh-toan?bookingId=${res.id}`);
+      router.push(
+        `/thanh-toan?bookingId=${res.id}${payChoice === 'deposit' ? '&pay=deposit' : ''}`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể thực hiện giữ chỗ.');
       setSubmitting(false);
@@ -473,10 +486,66 @@ export default function WorkshopBookingDrawer({
               </div>
             </div>
 
-            {/* Step 3: Thông tin người tham gia */}
+            {/* Step 3: Hình thức thanh toán lần đầu (P2-3). The deposit amount
+                itself is never computed here — it comes from the hold response
+                (BookingDto.DepositAmount) and is shown at checkout. */}
+            {currentSession && totalPrice > 0 ? (
+              <div>
+                <div className="ws-drawer-section-title">
+                  <span>3. Thanh toán lần đầu</span>
+                </div>
+                <div className="ws-sessions-list">
+                  <div
+                    className={`ws-session-option ${payChoice === 'full' ? 'selected' : ''}`}
+                    onClick={() => setPayChoice('full')}
+                  >
+                    <div className="ws-session-radio">
+                      {payChoice === 'full' && <div className="ws-session-radio-inner" />}
+                    </div>
+                    <div className="ws-session-details">
+                      <div className="ws-session-date-time">
+                        <span className="ws-session-datetime-txt">
+                          Trả đủ {formatPrice(totalPrice)}
+                        </span>
+                      </div>
+                      <div className="ws-session-venue">
+                        <span>Thanh toán toàn bộ ngay lần đầu, nhận vé sau khi tiệm xác nhận.</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    className={`ws-session-option ${payChoice === 'deposit' ? 'selected' : ''}`}
+                    style={
+                      sessionStartsWithin24h ? { opacity: 0.55, cursor: 'not-allowed' } : undefined
+                    }
+                    onClick={() => {
+                      if (!sessionStartsWithin24h) setPayChoice('deposit');
+                    }}
+                  >
+                    <div className="ws-session-radio">
+                      {payChoice === 'deposit' && <div className="ws-session-radio-inner" />}
+                    </div>
+                    <div className="ws-session-details">
+                      <div className="ws-session-date-time">
+                        <span className="ws-session-datetime-txt">Cọc trước 30%</span>
+                      </div>
+                      <div className="ws-session-venue">
+                        <span>
+                          {sessionStartsWithin24h
+                            ? 'Ca học trong 24 giờ tới cần thanh toán đủ ngay lần đầu.'
+                            : 'Số tiền cọc chính xác hiện ở trang thanh toán. Trả nốt trước giờ học để nhận vé.'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Step 4: Thông tin người tham gia */}
             <div>
               <div className="ws-drawer-section-title">
-                <span>3. Thông tin học viên</span>
+                <span>4. Thông tin học viên</span>
               </div>
 
               {authChecked && currentUser ? (
@@ -573,6 +642,10 @@ export default function WorkshopBookingDrawer({
                     'Bạn đã đăng ký ca học này'
                   ) : freeSeats <= 0 ? (
                     'Ca học đã hết chỗ'
+                  ) : payChoice === 'deposit' ? (
+                    <>
+                      Tiếp tục thanh toán · Cọc trước 30% <ArrowRight size={17} />
+                    </>
                   ) : (
                     <>
                       Tiếp tục thanh toán · {formatPrice(totalPrice)} <ArrowRight size={17} />

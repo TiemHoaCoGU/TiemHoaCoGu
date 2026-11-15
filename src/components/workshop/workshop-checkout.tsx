@@ -54,6 +54,7 @@ function remainingSeconds(holdExpiresAt?: string) {
 export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
   const searchParams = useSearchParams();
   const vnpResponseCode = searchParams.get('vnp_ResponseCode');
+  const payParam = searchParams.get('pay');
   const [booking, setBooking] = useState<Booking | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [workshop, setWorkshop] = useState<Workshop | null>(null);
@@ -189,11 +190,30 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
   const seconds = countdown % 60;
   const timeFormatted = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
+  // P2-3: deposit-first choice from the drawer (?pay=deposit). The amount is
+  // the server's DepositAmount — never computed on the client. It only
+  // applies to the first payment of a still-unpaid booking; any later payment
+  // (the phase-1 M3 remainder path) charges the full remaining amount.
+  // Note the ?? (not ||): a fully-paid booking has remainingAmount 0, which
+  // must stay 0 so the paid-success state below is reached.
+  const totalAmount = booking?.totalAmount ?? 0;
+  const remainingAmount = booking?.remainingAmount ?? totalAmount;
+  const depositAmount = booking?.depositAmount ?? 0;
+  const isDepositFirst =
+    payParam === 'deposit' &&
+    totalAmount > 0 &&
+    depositAmount > 0 &&
+    remainingAmount === totalAmount;
+  const reportAmount = isDepositFirst ? depositAmount : remainingAmount || totalAmount;
+  // VNPay always charges the full remaining amount — the deposit choice
+  // collapses to "Trả đủ" when the customer picks VNPay.
+  const vnpayAmount = remainingAmount || totalAmount;
+
   async function handleReportTransfer() {
     if (!booking || isProcessing) return;
     setIsProcessing(true);
     setError('');
-    const amount = booking.remainingAmount || booking.totalAmount;
+    const amount = reportAmount;
     try {
       await storeRequest(
         `payments/booking/${booking.id}`,
@@ -294,9 +314,9 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
   }
 
   const bookingCode = booking?.bookingCode || 'WS-CHUA-CAP';
-  const totalAmount = booking?.totalAmount || 0;
-  const remainingAmount = booking?.remainingAmount || totalAmount;
-  const reportAmount = remainingAmount || totalAmount;
+  const pendingVerificationAmount = booking?.pendingVerificationAmount ?? 0;
+  // What was actually reported (while it is still awaiting verification).
+  const reportedAmount = pendingVerificationAmount > 0 ? pendingVerificationAmount : reportAmount;
   const workshopName = workshop?.name || 'Workshop Cắm Hoa Sáp';
   const sessionDate = session ? formatDate(session.sessionDate) : '—';
   const sessionTime = session
@@ -435,7 +455,7 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
               <span style={{ color: '#64748b', fontSize: '13px' }}>Số tiền báo chuyển:</span>
               <strong style={{ color: '#1c2326', fontSize: '13.5px' }}>
-                {formatPrice(reportAmount)}
+                {formatPrice(reportedAmount)}
               </strong>
             </div>
             {countdown > 0 && (
@@ -614,8 +634,9 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
                 margin: '12px 0 0',
               }}
             >
-              Tiệm sẽ xác nhận khi nhận được tiền. Vé QR chỉ phát hành sau khi đặt chỗ được xác
-              nhận.
+              {isDepositFirst
+                ? `Bạn chọn cọc trước 30% (${formatPrice(depositAmount)}). Còn thiếu ${formatPrice(totalAmount - depositAmount)} — trả nốt trước giờ học để nhận vé. Vé QR chỉ phát hành sau khi thanh toán đủ.`
+                : 'Tiệm sẽ xác nhận khi nhận được tiền. Vé QR chỉ phát hành sau khi đặt chỗ được xác nhận.'}
             </p>
 
             <button
@@ -627,7 +648,7 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
             >
               {vnpayBusy
                 ? 'Đang chuyển sang cổng VNPay…'
-                : `Thanh toán VNPay · ${formatPrice(reportAmount)}`}
+                : `Thanh toán VNPay · ${formatPrice(vnpayAmount)}`}
             </button>
             <p
               style={{
@@ -639,6 +660,9 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
             >
               Thanh toán qua cổng VNPay (sandbox). Bạn sẽ được chuyển về trang này để đối chiếu
               kết quả.
+              {isDepositFirst
+                ? ' VNPay thu đủ phần còn lại, không áp dụng cọc trước.'
+                : ''}
             </p>
 
             <div style={{ textAlign: 'center', marginTop: '16px' }}>
