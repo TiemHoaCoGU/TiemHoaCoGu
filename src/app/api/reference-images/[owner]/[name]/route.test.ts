@@ -18,7 +18,10 @@ beforeEach(() => {
   values.clear();
   values.set('store_access', 'test-token');
   vi.stubEnv('API_BASE_URL', 'http://localhost:5085');
-  vi.stubGlobal('fetch', vi.fn(async () => image()));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => image()),
+  );
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -27,7 +30,10 @@ afterEach(() => {
 
 describe('GET /api/reference-images/[owner]/[name]', () => {
   it('trả ảnh kèm security headers khi backend trả ảnh hợp lệ', async () => {
-    const response = await GET(new Request('https://shop.test/api/reference-images/x/y'), context());
+    const response = await GET(
+      new Request('https://shop.test/api/reference-images/x/y'),
+      context(),
+    );
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('image/png');
     expect(response.headers.get('cache-control')).toBe('private, no-store');
@@ -47,9 +53,9 @@ describe('GET /api/reference-images/[owner]/[name]', () => {
     expect((await GET(new Request('https://shop.test/x'), context('not-hex', name))).status).toBe(
       404,
     );
-    expect(
-      (await GET(new Request('https://shop.test/x'), context(owner, 'evil.exe'))).status,
-    ).toBe(404);
+    expect((await GET(new Request('https://shop.test/x'), context(owner, 'evil.exe'))).status).toBe(
+      404,
+    );
     expect(
       (await GET(new Request('https://shop.test/x'), context(owner, 'short.png'))).status,
     ).toBe(404);

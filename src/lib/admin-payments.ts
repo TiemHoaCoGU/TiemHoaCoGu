@@ -6,11 +6,7 @@ export type PaymentRecordInput = {
   transactionCode: string;
 };
 
-export type PaymentRequest = (
-  path: string,
-  body?: unknown,
-  method?: string,
-) => Promise<unknown>;
+export type PaymentRequest = (path: string, body?: unknown, method?: string) => Promise<unknown>;
 
 /**
  * Lỗi nhập liệu của form ghi nhận thanh toán, null khi hợp lệ.

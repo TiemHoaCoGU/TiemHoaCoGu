@@ -7,9 +7,7 @@ describe('validatePaymentRecord', () => {
   it('chặn số tiền <= 0 hoặc không phải số', () => {
     expect(validatePaymentRecord(0, 'COD-1')).toBe('Số tiền thanh toán phải lớn hơn 0.');
     expect(validatePaymentRecord(-5000, 'COD-1')).toBe('Số tiền thanh toán phải lớn hơn 0.');
-    expect(validatePaymentRecord(Number.NaN, 'COD-1')).toBe(
-      'Số tiền thanh toán phải lớn hơn 0.',
-    );
+    expect(validatePaymentRecord(Number.NaN, 'COD-1')).toBe('Số tiền thanh toán phải lớn hơn 0.');
   });
   it('chặn mã giao dịch trống', () => {
     expect(validatePaymentRecord(100000, '')).toBe('Nhập mã giao dịch để tránh ghi trùng.');
