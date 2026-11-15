@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useSearchParams } from 'next/navigation';
 import {
   CalendarDays,
   Clock,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 import { storeRequest } from '@/lib/browser-api';
 import type { Booking, Session, Workshop } from '@/lib/api/client';
+import { DEFAULT_WORKSHOP_LOCATION } from '@/lib/transaction';
 import './workshop-checkout.css';
 
 interface WorkshopCheckoutProps {
@@ -50,20 +52,29 @@ function remainingSeconds(holdExpiresAt?: string) {
 }
 
 export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
+  const searchParams = useSearchParams();
+  const vnpResponseCode = searchParams.get('vnp_ResponseCode');
   const [booking, setBooking] = useState<Booking | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [workshop, setWorkshop] = useState<Workshop | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [sessionError, setSessionError] = useState('');
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [copiedField, setCopiedField] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [vnpayBusy, setVnpayBusy] = useState(false);
   const [reported, setReported] = useState(false);
   const [countdown, setCountdown] = useState(0);
+  const vnpReturnDone = useRef(false);
+  const expiredRefetchDone = useRef(false);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError('');
+    setSessionError('');
+    expiredRefetchDone.current = false;
 
     storeRequest<Booking>(`bookings/${bookingId}`)
       .then(async (b) => {
@@ -72,15 +83,48 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
         setCountdown(remainingSeconds(b.holdExpiresAt));
         if ((b.pendingVerificationAmount ?? 0) > 0) setReported(true);
 
+        // VNPay return: the provider redirects back here with vnp_* params.
+        // Sync once through the BE (it verifies the signature); the booking
+        // below is then refetched so the page shows the server truth.
+        if (vnpResponseCode && !vnpReturnDone.current) {
+          vnpReturnDone.current = true;
+          try {
+            await storeRequest(
+              `bookings/${bookingId}/vnpay/return`,
+              { query: searchParams.toString() },
+              'POST',
+            );
+            const synced = await storeRequest<Booking>(`bookings/${bookingId}`).catch(
+              () => null,
+            );
+            if (active && synced) {
+              setBooking(synced);
+              setCountdown(remainingSeconds(synced.holdExpiresAt));
+              if ((synced.pendingVerificationAmount ?? 0) > 0) setReported(true);
+            }
+          } catch (err) {
+            if (active)
+              setError(
+                err instanceof Error
+                  ? err.message
+                  : 'Không thể đối chiếu kết quả thanh toán VNPay.',
+              );
+          }
+        }
+
+        // M6: a session lookup failure is shown, not swallowed — the payment
+        // box stays hidden until the session loads.
+        let matched = false;
         try {
           const wsList = await storeRequest<{ id: string }[]>('workshops');
           for (const w of wsList) {
             try {
               const wsSessions = await storeRequest<Session[]>(`workshops/${w.id}/sessions`);
-              const matched = wsSessions.find((s) => s.id === b.sessionId);
-              if (matched) {
+              const found = wsSessions.find((s) => s.id === b.sessionId);
+              if (found) {
+                matched = true;
                 if (active) {
-                  setSession(matched);
+                  setSession(found);
                   const wsDetail = await storeRequest<Workshop>(`workshops/${w.id}`).catch(
                     () => null,
                   );
@@ -89,12 +133,13 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
                 break;
               }
             } catch {
-              // continue
+              // try the next workshop
             }
           }
         } catch {
-          // ignore session fetch error
+          // workshops list itself failed
         }
+        if (active && !matched) setSessionError('Không tải được thông tin ca học.');
       })
       .catch((err) => {
         if (active)
@@ -107,7 +152,7 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
     return () => {
       active = false;
     };
-  }, [bookingId]);
+  }, [bookingId, loadAttempt, vnpResponseCode, searchParams]);
 
   useEffect(() => {
     if (countdown <= 0) return;
@@ -117,10 +162,27 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
     return () => clearInterval(timer);
   }, [countdown]);
 
-  const copyToClipboard = (text: string, field: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedField(field);
-    setTimeout(() => setCopiedField(''), 2000);
+  // M2: when the hold runs out, refetch once so the expired state shows the
+  // server status (expired/cancelled) instead of a stale local copy.
+  useEffect(() => {
+    if (countdown !== 0 || !booking || expiredRefetchDone.current) return;
+    expiredRefetchDone.current = true;
+    storeRequest<Booking>(`bookings/${booking.id}`)
+      .then((fresh) => {
+        setBooking(fresh);
+        setCountdown(remainingSeconds(fresh.holdExpiresAt));
+      })
+      .catch(() => {});
+  }, [countdown, booking]);
+
+  const copyToClipboard = async (text: string, field: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(''), 2000);
+    } catch {
+      setError('Không thể sao chép tự động. Vui lòng chép tay mã này.');
+    }
   };
 
   const minutes = Math.floor(countdown / 60);
@@ -150,6 +212,55 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
       setReported(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể ghi nhận báo chuyển khoản.');
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
+  async function handleVnpayPay() {
+    if (!booking || isProcessing || vnpayBusy) return;
+    setVnpayBusy(true);
+    setError('');
+    try {
+      const checkout = await storeRequest<{ paymentUrl?: string }>(
+        `bookings/${booking.id}/vnpay`,
+        {},
+        'POST',
+      );
+      const redirect = checkout.paymentUrl ? new URL(checkout.paymentUrl) : null;
+      if (
+        !redirect ||
+        redirect.protocol !== 'https:' ||
+        redirect.hostname !== 'sandbox.vnpayment.vn'
+      )
+        throw new Error(
+          'Cổng thanh toán sandbox chưa trả về đường dẫn kiểm thử hợp lệ. Kiểm tra lại trạng thái vé trước khi thử lại.',
+        );
+      window.location.assign(redirect.toString());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể chuyển sang cổng thanh toán VNPay.');
+      setVnpayBusy(false);
+    }
+  }
+
+  async function handleCancelHold() {
+    if (!booking || isProcessing || vnpayBusy) return;
+    if (!window.confirm('Huỷ giữ chỗ này? Bạn sẽ cần chọn ca khác để đặt lại.')) return;
+    setIsProcessing(true);
+    setError('');
+    try {
+      await storeRequest(
+        `bookings/${booking.id}/cancel`,
+        'Khách huỷ giữ chỗ từ trang thanh toán',
+        'POST',
+      );
+      const fresh = await storeRequest<Booking>(`bookings/${booking.id}`).catch(() => null);
+      if (fresh) {
+        setBooking(fresh);
+        setCountdown(remainingSeconds(fresh.holdExpiresAt));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể huỷ giữ chỗ.');
     } finally {
       setIsProcessing(false);
     }
@@ -191,10 +302,18 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
   const sessionTime = session
     ? `${session.startTime.slice(0, 5)} - ${session.endTime.slice(0, 5)}`
     : '—';
-  const sessionVenue = session?.location || 'Xưởng Tiệm Hoa Có Gu';
+  const sessionVenue = session?.location || DEFAULT_WORKSHOP_LOCATION;
+  const statusLower = (booking?.bookingStatus || '').toLowerCase();
   const isConfirmed =
-    (booking?.bookingStatus || '').toLowerCase() === 'confirmed' && remainingAmount === 0;
+    statusLower === 'confirmed' && remainingAmount === 0;
   const isFree = totalAmount === 0;
+  // M2: hold gone (server status or local countdown) — the payment box is
+  // replaced by the expired state, so the report button can't be used.
+  const isExpiredHold =
+    !isConfirmed &&
+    !isFree &&
+    !reported &&
+    (statusLower === 'expired' || statusLower === 'cancelled' || countdown === 0);
 
   const vietQrUrl = `https://img.vietqr.io/image/MB-0971201001-compact2.png?amount=${reportAmount}&addInfo=${encodeURIComponent(
     bookingCode,
@@ -338,6 +457,43 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
             </Link>
           </div>
         </div>
+      ) : sessionError ? (
+        <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+          <AlertCircle size={40} style={{ color: '#ef4444', margin: '0 auto 16px' }} />
+          <h2 style={{ fontSize: '20px', color: '#1c2326', marginBottom: '8px' }}>
+            Không tải được thông tin ca học
+          </h2>
+          <p style={{ color: '#64748b', marginBottom: '24px' }}>
+            {sessionError} Vui lòng thử tải lại để xem ca học trước khi thanh toán.
+          </p>
+          <button
+            type="button"
+            className="ws-btn-pay-action"
+            style={{ display: 'inline-flex', width: 'auto', padding: '10px 24px' }}
+            onClick={() => setLoadAttempt((n) => n + 1)}
+          >
+            Tải lại thông tin ca học
+          </button>
+        </div>
+      ) : isExpiredHold ? (
+        <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+          <AlertCircle size={40} style={{ color: '#f59e0b', margin: '0 auto 16px' }} />
+          <h2 style={{ fontSize: '20px', color: '#1c2326', marginBottom: '8px' }}>
+            Giữ chỗ đã hết hạn
+          </h2>
+          <p style={{ color: '#64748b', marginBottom: '24px' }}>
+            Thời gian giữ chỗ 10 phút đã hết
+            {statusLower === 'cancelled' ? ' hoặc giữ chỗ đã bị huỷ' : ''}. Vui lòng chọn ca khác
+            để đặt lại.
+          </p>
+          <Link
+            href="/workshop"
+            className="ws-btn-pay-action"
+            style={{ display: 'inline-flex', width: 'auto', padding: '12px 28px', textDecoration: 'none' }}
+          >
+            Chọn ca khác <ArrowRight size={16} />
+          </Link>
+        </div>
       ) : (
         <div className="ws-checkout-layout">
           <div className="ws-checkout-card">
@@ -396,7 +552,7 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
                       <button
                         type="button"
                         className="ws-copy-btn"
-                        onClick={() => copyToClipboard('0971201001', 'stk')}
+                        onClick={() => void copyToClipboard('0971201001', 'stk')}
                         aria-label="Sao chép số tài khoản"
                       >
                         {copiedField === 'stk' ? <Check size={12} /> : <Copy size={12} />}
@@ -421,7 +577,7 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
                       <button
                         type="button"
                         className="ws-copy-btn"
-                        onClick={() => copyToClipboard(bookingCode, 'nd')}
+                        onClick={() => void copyToClipboard(bookingCode, 'nd')}
                         aria-label="Sao chép nội dung chuyển khoản"
                       >
                         {copiedField === 'nd' ? <Check size={12} /> : <Copy size={12} />}
@@ -461,6 +617,49 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
               Tiệm sẽ xác nhận khi nhận được tiền. Vé QR chỉ phát hành sau khi đặt chỗ được xác
               nhận.
             </p>
+
+            <button
+              type="button"
+              className="ws-btn-pay-action"
+              style={{ marginTop: '10px', background: '#243db5' }}
+              onClick={() => void handleVnpayPay()}
+              disabled={isProcessing || vnpayBusy}
+            >
+              {vnpayBusy
+                ? 'Đang chuyển sang cổng VNPay…'
+                : `Thanh toán VNPay · ${formatPrice(reportAmount)}`}
+            </button>
+            <p
+              style={{
+                fontSize: '12px',
+                color: '#94a3b8',
+                textAlign: 'center',
+                margin: '8px 0 0',
+              }}
+            >
+              Thanh toán qua cổng VNPay (sandbox). Bạn sẽ được chuyển về trang này để đối chiếu
+              kết quả.
+            </p>
+
+            <div style={{ textAlign: 'center', marginTop: '16px' }}>
+              <button
+                type="button"
+                onClick={() => void handleCancelHold()}
+                disabled={isProcessing || vnpayBusy}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#dc2626',
+                  fontSize: '13.5px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  padding: 0,
+                }}
+              >
+                Huỷ giữ chỗ
+              </button>
+            </div>
           </div>
 
           <div className="ws-summary-sidebar">
