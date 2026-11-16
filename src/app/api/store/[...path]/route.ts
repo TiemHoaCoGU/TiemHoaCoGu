@@ -64,6 +64,7 @@ async function handler(request: Request, ctx: Ctx): Promise<NextResponse> {
     if (contentLength > MAX_BODY_BYTES) return jsonError('Nội dung quá lớn.', 413);
   }
 
+  // BFF lấy token từ cookie phía server. API vẫn kiểm chữ ký JWT, role và quyền với bản ghi.
   const jar = await storeCookies();
   const token = jar.get(ACCESS_COOKIE)?.value;
   if (route.protected && !token) return jsonError('Yêu cầu đăng nhập.', 401);
@@ -114,6 +115,7 @@ async function handler(request: Request, ctx: Ctx): Promise<NextResponse> {
             status: result.response.status,
             headers: noStore,
           });
+    // Đặt token vào cookie HttpOnly. JavaScript phía khách nhận dữ liệu tài khoản đã lọc.
     if (endpoint === 'auth/login' || endpoint === 'auth/register' || endpoint === 'auth/refresh') {
       const data =
         result.data && typeof result.data === 'object' && !Array.isArray(result.data)

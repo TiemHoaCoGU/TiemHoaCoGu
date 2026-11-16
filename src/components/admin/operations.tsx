@@ -500,6 +500,7 @@ export default function AdminOperations(
           depositPercent: Number(quoteForm.depositPercent),
           completionDate: new Date(quoteForm.completionDate).toISOString(),
           adminNote: quoteForm.adminNote,
+          // Server dùng mốc này để phát hiện khách đã sửa cấu hình sau khi Admin mở yêu cầu.
           ...(selectedRequest.bouquet ? { requestUpdatedAt: selectedRequest.updatedAt } : {}),
           ...(quoteForm.expiresAt
             ? { expiresAt: new Date(quoteForm.expiresAt).toISOString() }

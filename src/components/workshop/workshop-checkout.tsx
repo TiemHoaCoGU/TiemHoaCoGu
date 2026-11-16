@@ -81,6 +81,7 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
       .then(async (b) => {
         if (!active) return;
         setBooking(b);
+        // Đồng hồ đọc hạn server trả về và chỉ phục vụ hiển thị. Worker mới trả chỗ về ca.
         setCountdown(remainingSeconds(b.holdExpiresAt));
         if ((b.pendingVerificationAmount ?? 0) > 0) setReported(true);
 
@@ -207,6 +208,7 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
   // collapses to "Trả đủ" when the customer picks VNPay.
   const vnpayAmount = remainingAmount || totalAmount;
 
+  // Gửi báo chuyển khoản để Staff kiểm tra. Số tiền chỉ chuyển sang Paid khi có xác nhận.
   async function handleReportTransfer() {
     if (!booking || isProcessing) return;
     setIsProcessing(true);
@@ -235,6 +237,7 @@ export default function WorkshopCheckout({ bookingId }: WorkshopCheckoutProps) {
     }
   }
 
+  // API tính số tiền còn lại và tạo URL ký ở server. UI chỉ kiểm host sandbox trước khi chuyển trang.
   async function handleVnpayPay() {
     if (!booking || isProcessing || vnpayBusy) return;
     setVnpayBusy(true);

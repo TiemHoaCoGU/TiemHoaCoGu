@@ -315,6 +315,7 @@ export default function StaffWorkshopRoster() {
     }
   };
 
+  // Xác nhận giao dịch đang chờ theo mã đã báo, rồi tải lại số dư và trạng thái booking.
   const handleConfirmTransfer = async (booking: RosterBookingWithPending) => {
     if (!booking.pendingTransactionCode) return;
     if (!window.confirm(`Xác nhận đã nhận tiền cho vé ${booking.bookingCode}?`)) return;

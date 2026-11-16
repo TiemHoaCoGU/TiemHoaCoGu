@@ -100,6 +100,7 @@ export default function WorkshopTicketView({ bookingId }: { bookingId: string })
     let active = true;
     setLoading(true);
     setError('');
+    // Backend kiểm quyền và điều kiện phát hành rồi mới trả ảnh QR cùng thông tin ca học.
     storeRequest<WorkshopTicket>(`bookings/${bookingId}/ticket`)
       .then((data) => {
         if (active) setTicket(data);

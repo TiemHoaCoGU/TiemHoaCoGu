@@ -288,6 +288,7 @@ export default function Account() {
   };
 
   // Load user profile & auto-redirect admin
+  // Đọc phiên đang có qua BFF rồi đưa Admin/Staff vào đúng màn hình.
   const loadAccount = async () => {
     try {
       const me = await storeRequest<User>('auth/me');
@@ -388,6 +389,7 @@ export default function Account() {
     setMessage('');
     setIsError(false);
     try {
+      // Chờ BFF nhận kết quả đăng nhập và đặt cookie rồi mới gọi GET auth/me.
       await storeRequest(`auth/${mode}`, data);
       await loadAccount();
       setMessage(mode === 'login' ? 'Đăng nhập thành công.' : 'Tạo tài khoản thành công.');

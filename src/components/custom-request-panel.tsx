@@ -310,6 +310,7 @@ export default function CustomRequestPanel({
       setError('Hãy chọn tỉnh/thành phố và phường/xã theo danh mục GHN trước khi tạo đơn.');
       return;
     }
+    // Khóa retry gắn với revision và địa chỉ khách đang xác nhận, kể cả khu vực dùng để báo phí.
     const fingerprint = JSON.stringify([
       request.id,
       quote.currentRevision,
@@ -374,6 +375,7 @@ export default function CustomRequestPanel({
       );
       return;
     }
+    // Tạo đơn và mở giao dịch thanh toán có khóa riêng để retry từng thao tác độc lập.
     const fingerprint = `${balance.orderId}:${amount}`;
     if (!payAttempt.current || payAttempt.current.fingerprint !== fingerprint)
       payAttempt.current = { fingerprint, key: crypto.randomUUID() };

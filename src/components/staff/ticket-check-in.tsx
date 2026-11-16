@@ -110,6 +110,7 @@ export default function StaffTicketCheckIn({ initialToken = '' }: { initialToken
       setMessage('');
       setScan(null);
       try {
+        // Lần quét chỉ đọc tình trạng vé. handleCheckIn gọi POST khi Staff xác nhận.
         const data = await storeRequest<TicketScan>(`bookings/tickets/${nextToken}`);
         setScan(data);
         setStatus('ready');
@@ -140,6 +141,7 @@ export default function StaffTicketCheckIn({ initialToken = '' }: { initialToken
     await lookup(input);
   }
 
+  // Khi Staff xác nhận, server kiểm lại điều kiện trước khi ghi thời điểm điểm danh.
   async function handleCheckIn() {
     if (!token || !scan?.canCheckIn || status === 'loading') return;
     setStatus('loading');

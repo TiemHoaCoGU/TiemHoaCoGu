@@ -1,5 +1,6 @@
 'use client';
 
+// Trình duyệt gửi HTTP tới Next.js cùng cookie. Promise<T> báo kết quả sẽ về sau.
 export async function storeRequest<T>(
   path: string,
   body?: unknown,

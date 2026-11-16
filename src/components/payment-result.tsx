@@ -88,6 +88,7 @@ export default function PaymentResult() {
     storeRequest<PaymentBalance>(`gateway/orders/${orderId}/balance`)
       .then(async (result) => {
         if (!active) return;
+        // Nhánh demo gọi API mô phỏng sandbox. Số dư hiển thị vẫn được đọc lại từ backend.
         if (responseCode === '00' && result.remainingAmount > 0) {
           try {
             await storeRequest(

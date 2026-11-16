@@ -96,6 +96,7 @@ export default function WorkshopBookingDrawer({
   // Load auth user info and existing bookings
   useEffect(() => {
     let active = true;
+    // Dùng phiên đăng nhập để điền sẵn liên hệ và sau đó đọc các booking của khách.
     storeRequest<User>('auth/me')
       .then(async (me) => {
         if (!active) return;
@@ -191,6 +192,7 @@ export default function WorkshopBookingDrawer({
       24 * 60 * 60 * 1000
     : false;
 
+  // Kiểm tra tại UI để phản hồi nhanh. Server quyết định ca còn mở và còn đủ chỗ khi ghi booking.
   async function handleBookWorkshop(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -265,6 +267,7 @@ export default function WorkshopBookingDrawer({
       customerEmail: trimmedEmail || undefined,
     };
 
+    // Retry cùng ca và dữ liệu dùng lại khóa. Đổi số vé hoặc thông tin đặt chỗ tạo khóa mới.
     const fingerprint = payloadFingerprint({ sessionId: currentSession.id, ...payload });
     if (!idempotencyRef.current || idempotencyRef.current.fingerprint !== fingerprint) {
       idempotencyRef.current = { fingerprint, key: crypto.randomUUID() };
@@ -273,6 +276,7 @@ export default function WorkshopBookingDrawer({
     setSubmitting(true);
 
     try {
+      // Chờ backend tạo booking thật rồi mới dùng ID được trả về để mở checkout.
       const res = await storeRequest<Booking>(
         `bookings/sessions/${currentSession.id}`,
         { ...payload, idempotencyKey: idempotencyRef.current.key },

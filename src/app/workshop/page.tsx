@@ -14,6 +14,7 @@ export const metadata: Metadata = {
     'Tham gia các buổi workshop cắm hoa sáp thủ công tại Tiệm Hoa Có Gu. Tự tay chọn màu, uốn cánh và mang về trọn vẹn tác phẩm hoa nghệ thuật của riêng bạn.',
 };
 
+// Next.js tải danh sách lớp và ca trên server trước khi gửi trang cho trình duyệt.
 export default async function WorkshopPage() {
   const storefront = await getStorefront();
   const connected = storefront.mode === 'connected' && storefront.workshops !== undefined;

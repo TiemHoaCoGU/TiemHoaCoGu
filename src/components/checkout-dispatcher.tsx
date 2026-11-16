@@ -8,6 +8,7 @@ import { PageIntro } from './site';
 
 function CheckoutContent() {
   const searchParams = useSearchParams();
+  // Có bookingId thì dùng màn hình thanh toán vé. Giỏ hàng dùng màn hình riêng.
   const bookingId = searchParams.get('bookingId');
 
   if (bookingId) {
