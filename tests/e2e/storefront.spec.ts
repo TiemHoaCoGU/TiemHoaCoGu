@@ -192,6 +192,7 @@ test('tìm kiếm dialog dùng tên sản phẩm thật và Escape', async ({ pa
 
 test('tự phối hoa giữ số lượng từng màu và mang cấu hình vào bản nháp', async ({ page }) => {
   test.skip(connectedMode, 'Dùng catalog minh họa trong chế độ preview.');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/dat-rieng');
   const builder = page.getByRole('region', { name: 'Bó hoa của bạn' });
   await builder.getByRole('button', { name: 'Xóa bó hoa' }).click();
@@ -203,8 +204,43 @@ test('tự phối hoa giữ số lượng từng màu và mang cấu hình vào 
   await builder.getByRole('button', { name: 'Xáo vị trí hoa' }).click();
   await expect(builder.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '7');
   await builder.getByRole('button', { name: 'Tiếp tục với bó này' }).click();
-  await expect(page.getByText('Hồng sáp · Hồng × 3')).toBeVisible();
-  await expect(page.getByText('Hồng sáp · Đỏ × 4')).toBeVisible();
+  const draft = page.getByRole('group', { name: 'Bó hoa đã chọn' });
+  await expect(draft.getByText('Hồng sáp · Hồng × 3')).toBeVisible();
+  await expect(draft.getByText('Hồng sáp · Đỏ × 4')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Thông tin yêu cầu báo giá' })).toBeFocused();
+  const occasion = page.getByRole('button', { name: 'Sinh nhật', exact: true });
+  await expect(occasion).toBeInViewport();
+  await expect(page.getByRole('group', { name: 'Chọn ngân sách' })).toHaveCount(0);
+  await occasion.click();
+  await page.getByRole('button', { name: /Tiếp theo/ }).click();
+  await expect(page.getByText('Bước 2/4')).toBeVisible();
+  await page.getByRole('button', { name: /Tiếp theo/ }).click();
+  await expect(page.getByText('Bước 3/4')).toBeVisible();
+  await expect(page.getByLabel(/Ảnh tham khảo/)).toHaveCount(0);
+  await page.getByRole('button', { name: /Bỏ qua/ }).click();
+  await expect(page.getByText('Bước 4/4')).toBeVisible();
+  await expect(draft.getByText('Hồng sáp · Đỏ × 4')).toBeVisible();
+});
+
+test('gợi ý tự phối dùng hoa trong danh mục và hiện chi phí từng thành phần', async ({ page }) => {
+  test.skip(connectedMode, 'Dùng danh mục minh họa cố định để đối chiếu giá.');
+  await page.goto('/dat-rieng');
+  const builder = page.getByRole('region', { name: 'Bó hoa của bạn' });
+  const clear = builder.getByRole('button', { name: 'Xóa bó hoa' });
+  await clear.click();
+  const suggestion = builder.getByRole('button', { name: 'Phối thử một bó' });
+  await expect(suggestion).toBeVisible({ timeout: 3500 });
+  await suggestion.click();
+  await expect(builder.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '7');
+  const breakdown = builder.getByRole('group', { name: 'Chi tiết giá dự kiến' });
+  await expect(breakdown).toContainText('Đồng tiền · Hồng × 2');
+  await expect(breakdown).toContainText('28.000');
+  await expect(breakdown).toContainText('Công bó');
+  await expect(breakdown).toContainText('20.000');
+  await builder.getByRole('combobox', { name: 'Chọn giấy gói' }).selectOption('premium');
+  await expect(breakdown).toContainText('Giấy gói cao cấp');
+  await expect(builder.getByText(/174\.000/)).toBeVisible();
+  await expect(builder.getByRole('button', { name: 'Tiếp tục với bó này' })).toBeEnabled();
 });
 
 test('đặt riêng: preview không gửi API, chế độ thật yêu cầu đăng nhập', async ({ page }) => {

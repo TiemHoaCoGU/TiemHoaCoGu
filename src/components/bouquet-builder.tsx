@@ -1,8 +1,15 @@
 'use client';
 
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent,
+} from 'react';
 import Image from 'next/image';
-import { ArrowRight, Check, Lightbulb, Minus, Plus, Shuffle, Trash2 } from 'lucide-react';
+import { ArrowRight, Check, Flower2, Minus, Plus, Shuffle, Trash2 } from 'lucide-react';
 import { money } from '@/lib/catalog';
 import { storeRequest } from '@/lib/browser-api';
 import type { BouquetInput } from '@/lib/api/client';
@@ -36,17 +43,83 @@ export type BouquetSelection = {
   estimate: number;
 };
 
+const draftKey = 'tiem-hoa-bouquet-draft';
+
+function selectBouquet(
+  catalog: Catalog,
+  wrap: Catalog['wraps'][number],
+  amounts: Record<string, number>,
+): BouquetSelection {
+  const items = catalog.items.filter((item) => amounts[item.id] > 0);
+  return {
+    productId: catalog.productId,
+    input: {
+      wrapId: wrap.id,
+      lines: items.map((item) => ({ id: item.id, quantity: amounts[item.id] })),
+    },
+    labels: items.map(
+      (item) => `${item.name}${item.color ? ` · ${item.color}` : ''} × ${amounts[item.id]}`,
+    ),
+    wrap: wrap.name,
+    estimate:
+      catalog.laborPrice +
+      wrap.price +
+      items.reduce((sum, item) => sum + item.price * amounts[item.id], 0),
+  };
+}
+
+function readDraft(catalog: Catalog) {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(draftKey) ?? 'null') as Pick<
+      BouquetSelection,
+      'input' | 'productId'
+    > | null;
+    if (!stored || stored.productId !== catalog.productId) return;
+    const wrap = catalog.wraps.find((item) => item.id === stored.input.wrapId);
+    if (!wrap || !Array.isArray(stored.input.lines)) return;
+    const quantities = new Map<string, number>();
+    let count = 0;
+    let flowers = 0;
+    for (const { id, quantity } of stored.input.lines) {
+      const item = catalog.items.find((entry) => entry.id === id);
+      if (!item || quantities.has(id) || !Number.isInteger(quantity) || quantity < 1) return;
+      quantities.set(id, quantity);
+      count += quantity;
+      if (item.category === 'flowers') flowers += quantity;
+    }
+    if (count > catalog.maxStems || flowers < catalog.minFlowers) return;
+    return selectBouquet(catalog, wrap, Object.fromEntries(quantities));
+  } catch {
+    // Bộ phối vẫn dùng được khi trình duyệt chặn lưu bản nháp.
+  }
+}
+
+function clearDraft() {
+  try {
+    sessionStorage.removeItem(draftKey);
+  } catch {
+    // Bộ phối vẫn dùng được khi trình duyệt chặn lưu bản nháp.
+  }
+}
+
 const artNames = new Set([
   'rose',
+  'rose-red',
+  'rose-peach',
+  'spray-rose',
   'gerbera',
+  'gerbera-purple',
   'lily',
+  'lily-pink',
   'sunflower',
   'hydrangea',
   'eucalyptus',
   'baby-breath',
 ]);
-const artPath = (name: string) =>
-  `/images/bouquet-builder/${artNames.has(name) ? name : 'rose'}.webp`;
+function artPath(item: Item) {
+  const name = artNames.has(item.id) ? item.id : item.art;
+  return artNames.has(name) ? `/images/bouquet-builder/${name}.webp` : undefined;
+}
 const sample: Catalog = {
   minFlowers: 7,
   maxStems: 25,
@@ -156,42 +229,48 @@ const example = {
   'spray-rose': 1,
 };
 const poses = [
-  [50, 65, 7, 46],
-  [53, 71, 9, 46],
-  [67, 68, 16, 46],
-  [58, 63, 8, 49],
-  [45, 59, -10, 51],
-  [37, 71, -19, 41],
-  [45, 72, -10, 45],
-  [56, 70, 9, 44],
-  [62, 72, 20, 42],
-  [35, 70, -23, 39],
+  [48, 68, -13, 51],
+  [52, 72, 4, 48],
+  [56, 70, 16, 50],
+  [53, 65, 16, 55],
+  [46, 67, -23, 44],
+  [48, 62, -6, 48],
+  [49, 73, -7, 39],
+  [57, 74, 21, 42],
+  [52, 72, 3, 35],
+  [43, 72, -26, 38],
 ];
-const artFilter = (item: Item) => {
-  if (item.color === 'Đỏ' && item.art === 'rose') return 'saturate(1.65) brightness(.84)';
-  if (item.color === 'Cam' && item.art === 'rose') return 'hue-rotate(23deg) saturate(1.35)';
-  if (item.color === 'Tím' && item.art === 'gerbera') return 'hue-rotate(-49deg)';
-  if (item.color === 'Hồng' && item.art === 'lily')
-    return 'sepia(.23) saturate(1.5) hue-rotate(288deg)';
-  return undefined;
-};
 
 export default function BouquetOrder() {
   const [selection, setSelection] = useState<BouquetSelection | null>(null);
   const title = useRef<HTMLHeadingElement>(null);
+  const continueWith = useCallback((value: BouquetSelection) => {
+    setSelection(value);
+    if (!value.productId) return;
+    try {
+      // Chỉ lưu cấu hình hoa trong tab hiện tại, không lưu thông tin liên hệ.
+      sessionStorage.setItem(
+        draftKey,
+        JSON.stringify({ productId: value.productId, input: value.input }),
+      );
+    } catch {
+      // Bộ phối vẫn dùng được khi trình duyệt chặn lưu bản nháp.
+    }
+  }, []);
+
+  useEffect(() => {
+    const heading = title.current;
+    if (!selection || !heading) return;
+    // Bản nháp đã được chèn trên form, nên cuộn theo vị trí sau khi React cập nhật trang.
+    heading.focus({ preventScroll: true });
+    heading.scrollIntoView({ block: 'start', behavior: 'instant' });
+  }, [selection]);
+
   return (
     <>
-      <BouquetBuilder
-        onContinue={(value) => {
-          setSelection(value);
-          title.current?.focus();
-        }}
-      />
-      <h2 className="x-h2 bouquet-form-title" id="custom-request-form" ref={title} tabIndex={-1}>
-        Kể tiệm nghe <span className="x-serif">một chút.</span>
-      </h2>
+      <BouquetBuilder onContinue={continueWith} />
       {selection && (
-        <div className="bouquet-request">
+        <div className="bouquet-request" role="group" aria-label="Bó hoa đã chọn">
           <strong>Bó hoa đã chọn</strong>
           <ul>
             {selection.labels.map((line) => (
@@ -201,14 +280,31 @@ export default function BouquetOrder() {
           <p>
             {selection.wrap} · {money(selection.estimate)} dự kiến mỗi bó
           </p>
-          <button type="button" className="x-textlink" onClick={() => setSelection(null)}>
+          <button
+            type="button"
+            className="x-textlink"
+            onClick={() => {
+              clearDraft();
+              setSelection(null);
+            }}
+          >
             Bỏ cấu hình bó
           </button>
         </div>
       )}
+      <h2 className="x-h2 bouquet-form-title" id="custom-request-form" ref={title} tabIndex={-1}>
+        {selection ? (
+          'Thông tin yêu cầu báo giá'
+        ) : (
+          <>
+            Kể tiệm nghe <span className="x-serif">một chút.</span>
+          </>
+        )}
+      </h2>
       <CustomForm
         key={selection?.productId ?? (selection ? 'preview-bouquet' : 'idea')}
         bouquet={selection}
+        onSubmitted={clearDraft}
       />
     </>
   );
@@ -216,13 +312,20 @@ export default function BouquetOrder() {
 
 function BouquetBuilder({ onContinue }: { onContinue: (value: BouquetSelection) => void }) {
   const { mode } = useStore();
-  const [remote, setRemote] = useState<{ catalog?: Catalog; error?: string }>({});
+  const [remote, setRemote] = useState<{
+    catalog?: Catalog;
+    draft?: BouquetSelection;
+    error?: string;
+  }>({});
   useEffect(() => {
     if (mode !== 'connected') return;
     let active = true;
     storeRequest<Catalog>('custom-orders/bouquet-catalog').then(
       (catalog) => {
-        if (active) setRemote({ catalog });
+        if (!active) return;
+        const draft = readDraft(catalog);
+        setRemote({ catalog, draft });
+        if (draft) onContinue(draft);
       },
       (error: unknown) => {
         if (active)
@@ -234,7 +337,7 @@ function BouquetBuilder({ onContinue }: { onContinue: (value: BouquetSelection) 
     return () => {
       active = false;
     };
-  }, [mode]);
+  }, [mode, onContinue]);
 
   const catalog = mode === 'preview' ? sample : remote.catalog;
   if (!catalog)
@@ -250,6 +353,7 @@ function BouquetBuilder({ onContinue }: { onContinue: (value: BouquetSelection) 
       key={mode}
       catalog={catalog}
       preview={mode === 'preview'}
+      draft={remote.draft}
       onContinue={onContinue}
     />
   );
@@ -258,30 +362,38 @@ function BouquetBuilder({ onContinue }: { onContinue: (value: BouquetSelection) 
 function BouquetStudio({
   catalog,
   preview,
+  draft,
   onContinue,
 }: {
   catalog: Catalog;
   preview: boolean;
+  draft?: BouquetSelection;
   onContinue: (value: BouquetSelection) => void;
 }) {
-  const [amounts, setAmounts] = useState<Record<string, number>>(preview ? example : {});
+  const [amounts, setAmounts] = useState<Record<string, number>>(() =>
+    draft
+      ? Object.fromEntries(draft.input.lines.map(({ id, quantity }) => [id, quantity]))
+      : preview
+        ? example
+        : {},
+  );
   const [colors, setColors] = useState<Record<string, string>>({});
   const [category, setCategory] = useState<Category>('flowers');
-  const [wrapId, setWrapId] = useState(catalog.wraps[0].id);
+  const [wrapId, setWrapId] = useState(draft?.input.wrapId ?? catalog.wraps[0].id);
   const [layout, setLayout] = useState(0);
   const [offsets, setOffsets] = useState<Record<number, { x: number; y: number }>>({});
   const drag = useRef<{ index: number; x: number; y: number } | null>(null);
   const wrap = catalog.wraps.find((item) => item.id === wrapId)!;
+  const wrapImage = `/images/bouquet-builder/${wrapId === 'premium' ? 'wrap-premium' : 'wrap'}.webp`;
   const selected = catalog.items.filter((item) => amounts[item.id] > 0);
   const count = selected.reduce((sum, item) => sum + amounts[item.id], 0);
   const flowerCount = selected.reduce(
     (sum, item) => sum + (item.category === 'flowers' ? amounts[item.id] : 0),
     0,
   );
-  const estimate =
-    catalog.laborPrice +
-    wrap.price +
-    selected.reduce((sum, item) => sum + item.price * amounts[item.id], 0);
+  // Giá dự kiến cho một bó. Backend định giá lại từ ID giấy gói và số lượng từng biến thể.
+  const selection = selectBouquet(catalog, wrap, amounts);
+  const { estimate } = selection;
   const stems = selected.flatMap((item) => Array<Item>(amounts[item.id]).fill(item));
   const groups = new Map<string, Item[]>();
   for (const item of catalog.items) {
@@ -298,6 +410,24 @@ function BouquetStudio({
     setOffsets({});
   }
 
+  function trySuggestedBouquet() {
+    const flowers = new Map<string, Item>();
+    for (const item of catalog.items) {
+      if (item.category === 'flowers' && !flowers.has(item.name)) flowers.set(item.name, item);
+    }
+    const options = [...flowers.values()];
+    if (!options.length) return;
+    const suggested: Record<string, number> = {};
+    for (let index = 0; index < catalog.minFlowers; index++) {
+      const { id } = options[index % options.length];
+      suggested[id] = (suggested[id] ?? 0) + 1;
+    }
+    setAmounts(suggested);
+    setColors({});
+    setCategory('flowers');
+  }
+
+  // Tọa độ chỉ đổi hình xem trước. Payload nghiệp vụ lấy từ amounts và wrapId.
   function dragStem(event: PointerEvent<HTMLButtonElement>, index: number) {
     const origin = drag.current;
     if (origin?.index !== index) return;
@@ -365,7 +495,7 @@ function BouquetStudio({
               </button>
             </div>
             <label className="bouquet-wrap">
-              <Image src="/images/bouquet-builder/wrap.webp" alt="" width={15} height={19} />
+              <Image src={wrapImage} alt="" width={19} height={19} />
               <select
                 aria-label="Chọn giấy gói"
                 value={wrapId}
@@ -383,12 +513,14 @@ function BouquetStudio({
               <div className="bouquet-art" aria-label="Minh họa bó hoa">
                 <Image
                   className="bouquet-paper bouquet-paper-back"
-                  src="/images/bouquet-builder/wrap.webp"
+                  src={wrapImage}
                   alt=""
                   width={245}
                   height={290}
                 />
                 {stems.map((item, index) => {
+                  const src = artPath(item);
+                  if (!src) return null;
                   const [x, y, rotation, height] = poses[(index + layout) % poses.length];
                   const offset = offsets[index];
                   return (
@@ -404,7 +536,6 @@ function BouquetStudio({
                         top: `${y + (offset?.y ?? 0)}%`,
                         height: `${height}%`,
                         transform: `translate(-50%, -100%) rotate(${rotation}deg)`,
-                        filter: artFilter(item),
                       }}
                       onPointerDown={(event) => {
                         event.currentTarget.setPointerCapture(event.pointerId);
@@ -426,10 +557,11 @@ function BouquetStudio({
                       }}
                     >
                       <Image
-                        src={artPath(item.art)}
+                        src={src}
                         alt=""
                         width={245}
                         height={325}
+                        loading="eager"
                         draggable={false}
                       />
                     </button>
@@ -437,15 +569,26 @@ function BouquetStudio({
                 })}
                 <Image
                   className="bouquet-paper bouquet-paper-front"
-                  src="/images/bouquet-builder/wrap.webp"
+                  src={wrapImage}
                   alt=""
                   width={245}
                   height={290}
                 />
               </div>
             ) : (
-              <p className="bouquet-empty">Chọn hoa để bắt đầu phối bó của bạn.</p>
+              <div className="bouquet-empty">
+                <Flower2 size={28} aria-hidden="true" />
+                <p>Chọn từng bông hoặc bắt đầu với một bó phối từ danh mục.</p>
+                <button type="button" onClick={trySuggestedBouquet}>
+                  Phối thử một bó
+                </button>
+              </div>
             )}
+            <p className="bouquet-preview-note">
+              {selected.some((item) => !artPath(item))
+                ? 'Một số thành phần chưa có ảnh minh họa.'
+                : 'Ảnh minh họa phối hoa sáp'}
+            </p>
           </div>
           <div className="bouquet-palette">
             <h3>Chọn hoa cho bó</h3>
@@ -464,6 +607,7 @@ function BouquetStudio({
             <div className="bouquet-cards" key={category}>
               {[...groups].map(([name, variants]) => {
                 const item = variants.find((value) => value.id === colors[name]) ?? variants[0];
+                const src = artPath(item);
                 const quantity = amounts[item.id] ?? 0;
                 const total = variants.reduce((sum, value) => sum + (amounts[value.id] ?? 0), 0);
                 const label = `${name}${item.color ? ` ${item.color}` : ''}`;
@@ -476,13 +620,11 @@ function BouquetStudio({
                         aria-hidden="true"
                         onClick={() => change(item.id, 1)}
                       >
-                        <Image
-                          src={artPath(item.art)}
-                          width={52}
-                          height={76}
-                          alt=""
-                          style={{ filter: artFilter(item) }}
-                        />
+                        {src ? (
+                          <Image src={src} width={52} height={76} alt="" />
+                        ) : (
+                          <Flower2 size={23} />
+                        )}
                       </button>
                       <div>
                         <h4>{name}</h4>
@@ -538,6 +680,30 @@ function BouquetStudio({
             </div>
           </div>
         </div>
+        {selected.length > 0 && (
+          <section className="bouquet-breakdown" role="group" aria-label="Chi tiết giá dự kiến">
+            <h3>Thành phần và giá mỗi bó</h3>
+            <dl>
+              {selected.map((item) => (
+                <div key={item.id}>
+                  <dt>
+                    {item.name}
+                    {item.color ? ` · ${item.color}` : ''} × {amounts[item.id]}
+                  </dt>
+                  <dd>{money(item.price * amounts[item.id])}</dd>
+                </div>
+              ))}
+              <div>
+                <dt>Công bó</dt>
+                <dd>{money(catalog.laborPrice)}</dd>
+              </div>
+              <div>
+                <dt>{wrap.name}</dt>
+                <dd>{money(wrap.price)}</dd>
+              </div>
+            </dl>
+          </section>
+        )}
         <footer className="bouquet-foot">
           <div className="bouquet-summary">
             <div>
@@ -550,46 +716,27 @@ function BouquetStudio({
             </div>
             <div aria-live="polite">
               <strong>{money(count ? estimate : 0)}</strong>
-              <small>Giá dự kiến · gồm {money(catalog.laborPrice)} công bó</small>
+              <small>
+                {preview ? 'Giá minh họa mỗi bó' : 'Dự kiến mỗi bó · chưa gồm phí giao'}
+              </small>
             </div>
           </div>
           <div className="bouquet-action">
             <button
               type="button"
               disabled={flowerCount < catalog.minFlowers}
-              onClick={() =>
-                onContinue({
-                  input: {
-                    wrapId,
-                    lines: selected.map((item) => ({ id: item.id, quantity: amounts[item.id] })),
-                  },
-                  productId: catalog.productId,
-                  wrap: wrap.name,
-                  labels: selected.map(
-                    (item) =>
-                      `${item.name}${item.color ? ` · ${item.color}` : ''} × ${amounts[item.id]}`,
-                  ),
-                  estimate,
-                })
-              }
+              onClick={() => onContinue(selection)}
             >
               Tiếp tục với bó này <ArrowRight size={16} />
             </button>
           </div>
         </footer>
       </section>
-      <aside className="bouquet-tip">
-        <Lightbulb size={20} />
-        <div>
-          <strong>Gợi ý từ tiệm</strong>
-          <p>
-            Chọn một loại hoa làm điểm nhấn, rồi thêm vài cành lá để bó hoa có chiều sâu.{' '}
-            {preview
-              ? 'Hoa và giá trên đây là minh họa.'
-              : 'Tiệm sẽ xác nhận vật tư và giá khi báo giá.'}
-          </p>
-        </div>
-      </aside>
+      <p className="bouquet-tip">
+        {preview
+          ? 'Bản trải nghiệm dùng danh mục và giá minh họa.'
+          : 'Tiệm sẽ xác nhận vật tư, phí giao và giá cuối khi báo giá.'}
+      </p>
     </>
   );
 }

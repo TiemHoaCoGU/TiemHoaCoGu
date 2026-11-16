@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useStore } from './store-provider';
 import { storeRequest } from '@/lib/browser-api';
+import { money } from '@/lib/catalog';
 import { validateDeliveryArea } from '@/lib/delivery-area';
 import type { CustomRequest, CustomRequestInput } from '@/lib/api/client';
 import type { BouquetSelection } from './bouquet-builder';
@@ -93,7 +94,15 @@ function IdeaBouquet({ colors }: { colors: string[] }) {
   );
 }
 
-export default function CustomForm({ bouquet }: { bouquet: BouquetSelection | null }) {
+const signInForDelivery = 'Đăng nhập để chọn khu vực nhận hoa và gửi yêu cầu báo giá.';
+
+export default function CustomForm({
+  bouquet,
+  onSubmitted,
+}: {
+  bouquet: BouquetSelection | null;
+  onSubmitted: () => void;
+}) {
   const { mode, products } = useStore();
   const router = useRouter();
   const customizable = products.filter((p) =>
@@ -151,7 +160,7 @@ export default function CustomForm({ bouquet }: { bouquet: BouquetSelection | nu
         const message = err instanceof Error ? err.message : '';
         setLocationError(
           message.includes('đăng nhập')
-            ? 'Đăng nhập để chọn khu vực giao hoa, hoặc để tiệm hỏi lại khi báo giá.'
+            ? signInForDelivery
             : 'Không tải được danh mục tỉnh GHN staging.',
         );
       });
@@ -215,8 +224,8 @@ export default function CustomForm({ bouquet }: { bouquet: BouquetSelection | nu
     setError('');
   }
   function validate(current: number) {
-    if (current === 0 && (!fields.occasion || !fields.budget))
-      return 'Hãy chọn dịp và khoảng ngân sách nhé.';
+    if (current === 0 && !fields.occasion) return 'Hãy chọn dịp tặng nhé.';
+    if (current === 0 && !bouquet && !fields.budget) return 'Hãy chọn khoảng ngân sách nhé.';
     if (current === 1 && !bouquet && !fields.palette)
       return 'Hãy chọn bảng màu hoặc để tiệm gợi ý nhé.';
     if (current === 1 && mode === 'connected' && !(bouquet?.productId || fields.productId))
@@ -230,7 +239,8 @@ export default function CustomForm({ bouquet }: { bouquet: BouquetSelection | nu
       return 'Số lượng phải là số nguyên từ 1 đến 1000.';
     if (current === 1 && fields.date && fields.date < minDate)
       return 'Hãy chọn ngày mong nhận từ ngày mai.';
-    if (current === 2 && !fields.message.trim()) return 'Kể tiệm nghe điều bạn muốn gửi gắm nhé.';
+    if (current === 2 && !bouquet && !fields.message.trim())
+      return 'Kể tiệm nghe điều bạn muốn gửi gắm nhé.';
     if (current === 3 && !fields.name.trim()) return 'Hãy cho tiệm biết tên của bạn.';
     if (current === 3 && !/^[+0-9 ()-]{9,20}$/.test(fields.phone.trim()))
       return 'Số điện thoại chưa hợp lệ, bạn kiểm tra lại nhé.';
@@ -246,6 +256,7 @@ export default function CustomForm({ bouquet }: { bouquet: BouquetSelection | nu
     return '';
   }
   function next() {
+    if (step === 3 && locationError === signInForDelivery) return;
     const message = validate(step);
     if (message) {
       setError(message);
@@ -263,6 +274,10 @@ export default function CustomForm({ bouquet }: { bouquet: BouquetSelection | nu
     }
     if (mode !== 'connected' || submitting.current) return;
     const wish = fields.date ? new Date(`${fields.date}T12:00:00`).toISOString() : undefined;
+    const preferences = bouquet
+      ? fields.occasion
+      : `${fields.occasion}; ngân sách ${fields.budget}; bảng màu ${fields.palette}`;
+    // quantity là số bó. Mỗi dòng bouquet chứa số bông/cành trong một bó.
     const body: CustomRequestInput = {
       productId: bouquet?.productId ?? fields.productId,
       quantity: Number(fields.quantity),
@@ -270,13 +285,13 @@ export default function CustomForm({ bouquet }: { bouquet: BouquetSelection | nu
       provinceId: provinceId ? Number(provinceId) : undefined,
       wardId: wardId ? Number(wardId) : undefined,
       bouquet: bouquet?.input,
-      description: `Liên hệ: ${fields.name.trim()} — ${fields.phone.trim()}\n${fields.occasion}; ngân sách ${fields.budget}${bouquet ? '' : `; bảng màu ${fields.palette}`}\n${fields.message.trim()}`,
+      description: `Liên hệ: ${fields.name.trim()} — ${fields.phone.trim()}\n${preferences}\n${fields.message.trim()}`,
     };
     submitting.current = true;
     setPending(true);
     setError('');
     try {
-      if (image) {
+      if (!bouquet && image) {
         if (uploaded.current?.file !== image.file) {
           const form = new FormData();
           form.append('file', image.file);
@@ -301,6 +316,7 @@ export default function CustomForm({ bouquet }: { bouquet: BouquetSelection | nu
         body.referenceImageUrl = uploaded.current.url;
       }
       const result = await storeRequest<CustomRequest>('custom-orders', body, 'POST');
+      if (bouquet) onSubmitted();
       router.push(`/tra-cuu?yeu-cau=${encodeURIComponent(result.id)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể gửi yêu cầu.');
@@ -335,17 +351,21 @@ export default function CustomForm({ bouquet }: { bouquet: BouquetSelection | nu
                   <dd>{fields.occasion}</dd>
                 </div>
                 <div>
-                  <dt>Ngân sách</dt>
-                  <dd>{fields.budget}</dd>
+                  <dt>{bouquet ? 'Tổng dự kiến (chưa gồm phí giao)' : 'Ngân sách'}</dt>
+                  <dd>
+                    {bouquet ? money(bouquet.estimate * Number(fields.quantity)) : fields.budget}
+                  </dd>
                 </div>
                 <div>
                   <dt>Bảng màu</dt>
                   <dd>{bouquet ? 'Theo cấu hình bó' : fields.palette}</dd>
                 </div>
-                <div>
-                  <dt>Điều gửi gắm</dt>
-                  <dd>{fields.message}</dd>
-                </div>
+                {fields.message.trim() && (
+                  <div>
+                    <dt>Điều gửi gắm</dt>
+                    <dd>{fields.message}</dd>
+                  </div>
+                )}
                 <div>
                   <dt>Số lượng</dt>
                   <dd>{fields.quantity}</dd>
@@ -400,20 +420,29 @@ export default function CustomForm({ bouquet }: { bouquet: BouquetSelection | nu
                       </button>
                     ))}
                   </div>
-                  <h3 className="x-q x-q--sm">Khoảng ngân sách</h3>
-                  <div className="x-chips" role="group" aria-label="Chọn ngân sách">
-                    {budgets.map((item) => (
-                      <button
-                        type="button"
-                        className={`custom-chip ${fields.budget === item ? 'selected' : ''}`}
-                        aria-pressed={fields.budget === item}
-                        onClick={() => update('budget', item)}
-                        key={item}
-                      >
-                        {item}
-                      </button>
-                    ))}
-                  </div>
+                  {bouquet ? (
+                    <p className="custom-upload-hint">
+                      Giá dự kiến <strong>{money(bouquet.estimate)} mỗi bó</strong>, chưa gồm phí
+                      giao.
+                    </p>
+                  ) : (
+                    <>
+                      <h3 className="x-q x-q--sm">Khoảng ngân sách</h3>
+                      <div className="x-chips" role="group" aria-label="Chọn ngân sách">
+                        {budgets.map((item) => (
+                          <button
+                            type="button"
+                            className={`custom-chip ${fields.budget === item ? 'selected' : ''}`}
+                            aria-pressed={fields.budget === item}
+                            onClick={() => update('budget', item)}
+                            key={item}
+                          >
+                            {item}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </>
               )}
               {step === 1 && (
@@ -489,56 +518,64 @@ export default function CustomForm({ bouquet }: { bouquet: BouquetSelection | nu
               {step === 2 && (
                 <>
                   <label className="custom-field">
-                    <span className="x-q">Điều bạn muốn gửi gắm *</span>
+                    <span className="x-q">
+                      {bouquet ? 'Ghi chú cho tiệm (không bắt buộc)' : 'Điều bạn muốn gửi gắm *'}
+                    </span>
                     <textarea
                       className="x-in"
                       maxLength={1500}
                       value={fields.message}
                       onChange={(e) => update('message', e.target.value)}
-                      placeholder="Người ấy thích gì? Bạn muốn bó hoa mang cảm giác như thế nào?"
+                      placeholder={
+                        bouquet
+                          ? 'Ví dụ: thêm thiệp hoặc lời nhắn'
+                          : 'Người ấy thích gì? Bạn muốn bó hoa mang cảm giác như thế nào?'
+                      }
                     />
                   </label>
-                  <div className="custom-field">
-                    <label htmlFor="custom-reference-image">Ảnh tham khảo (không bắt buộc)</label>
-                    <p className="custom-upload-hint" id="custom-image-hint">
-                      Chọn ảnh JPG, PNG hoặc WebP, tối đa 900 KiB.
-                    </p>
-                    <input
-                      id="custom-reference-image"
-                      className="x-in custom-file"
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      aria-label="Ảnh tham khảo (không bắt buộc)"
-                      aria-describedby="custom-image-hint"
-                      onChange={selectImage}
-                    />
-                    <div className="custom-file-row">
-                      <label htmlFor="custom-reference-image" className="custom-file-button">
-                        Chọn ảnh từ máy
-                      </label>
-                      {!image && <span>Chưa chọn ảnh</span>}
-                    </div>
-                    {image && (
-                      <div className="custom-upload-preview">
-                        {/* Ảnh được xem trực tiếp từ máy của người dùng. */}
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={image.url} alt="Ảnh tham khảo đã chọn" />
-                        <div>
-                          <span>{image.file.name}</span>
-                          <button
-                            type="button"
-                            className="custom-remove-image"
-                            onClick={() => {
-                              setImage(null);
-                              setError('');
-                            }}
-                          >
-                            Bỏ ảnh
-                          </button>
-                        </div>
+                  {!bouquet && (
+                    <div className="custom-field">
+                      <label htmlFor="custom-reference-image">Ảnh tham khảo (không bắt buộc)</label>
+                      <p className="custom-upload-hint" id="custom-image-hint">
+                        Chọn ảnh JPG, PNG hoặc WebP, tối đa 900 KiB.
+                      </p>
+                      <input
+                        id="custom-reference-image"
+                        className="x-in custom-file"
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        aria-label="Ảnh tham khảo (không bắt buộc)"
+                        aria-describedby="custom-image-hint"
+                        onChange={selectImage}
+                      />
+                      <div className="custom-file-row">
+                        <label htmlFor="custom-reference-image" className="custom-file-button">
+                          Chọn ảnh từ máy
+                        </label>
+                        {!image && <span>Chưa chọn ảnh</span>}
                       </div>
-                    )}
-                  </div>
+                      {image && (
+                        <div className="custom-upload-preview">
+                          {/* Ảnh được xem trực tiếp từ máy của người dùng. */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={image.url} alt="Ảnh tham khảo đã chọn" />
+                          <div>
+                            <span>{image.file.name}</span>
+                            <button
+                              type="button"
+                              className="custom-remove-image"
+                              onClick={() => {
+                                setImage(null);
+                                setError('');
+                              }}
+                            >
+                              Bỏ ảnh
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
               {step === 3 && (
@@ -623,25 +660,13 @@ export default function CustomForm({ bouquet }: { bouquet: BouquetSelection | nu
                       {locationError && (
                         <p className="custom-upload-hint" role="status">
                           {locationError}
-                          {bouquet && (
+                          {locationError === signInForDelivery && (
                             <>
                               {' '}
-                              {locationError.includes('Đăng nhập') && (
-                                <Link href="/tai-khoan" target="_blank" rel="noopener noreferrer">
-                                  Mở trang đăng nhập
-                                </Link>
-                              )}{' '}
-                              <button
-                                type="button"
-                                className="x-textlink"
-                                onClick={() =>
-                                  wardsFailed
-                                    ? setWardsRetry((count) => count + 1)
-                                    : setLocationsRetry((count) => count + 1)
-                                }
-                              >
-                                Tải lại khu vực
-                              </button>
+                              <Link href="/tai-khoan" target="_blank" rel="noopener noreferrer">
+                                Mở trang đăng nhập
+                              </Link>
+                              {' rồi quay lại tab này và tải lại khu vực.'}
                             </>
                           )}
                         </p>
@@ -656,7 +681,7 @@ export default function CustomForm({ bouquet }: { bouquet: BouquetSelection | nu
                               : setLocationsRetry((count) => count + 1)
                           }
                         >
-                          Thử lại
+                          {locationError === signInForDelivery ? 'Tải lại khu vực' : 'Thử lại'}
                         </button>
                       )}
                     </>
@@ -675,7 +700,12 @@ export default function CustomForm({ bouquet }: { bouquet: BouquetSelection | nu
           </p>
           {error && (
             <p className="custom-error" role="alert">
-              {error} {error.includes('đăng nhập') && <Link href="/tai-khoan">Đăng nhập</Link>}
+              {error}{' '}
+              {error.includes('đăng nhập') && (
+                <Link href="/tai-khoan" target="_blank" rel="noopener noreferrer">
+                  Đăng nhập
+                </Link>
+              )}
             </p>
           )}
           <div className="x-nav">
@@ -694,8 +724,17 @@ export default function CustomForm({ bouquet }: { bouquet: BouquetSelection | nu
             )}
             <span />
             {!review ? (
-              <button type="submit" className="x-btn">
-                {step === 3 ? 'Xem bản nháp' : 'Tiếp theo'} →
+              <button
+                type="submit"
+                className="x-btn"
+                disabled={step === 3 && locationError === signInForDelivery}
+              >
+                {step === 3
+                  ? 'Xem bản nháp'
+                  : step === 2 && bouquet && !fields.message.trim()
+                    ? 'Bỏ qua'
+                    : 'Tiếp theo'}{' '}
+                →
               </button>
             ) : mode === 'connected' ? (
               <button
@@ -718,15 +757,17 @@ export default function CustomForm({ bouquet }: { bouquet: BouquetSelection | nu
             ? 'Tiệm sẽ xem ý tưởng và gửi báo giá để bạn cân nhắc trong trang tra cứu.'
             : 'Thông tin chưa được gửi hay lưu trên máy chủ. Chưa có báo giá hoặc thanh toán.'}
         </div>
-        <figure className="x-prev custom-preview">
-          <figcaption className="x-prev__t">Ý tưởng đang nở hoa</figcaption>
-          <IdeaBouquet colors={palette.colors} />
-          <div className="custom-preview-text">
-            <strong>{fields.palette || 'Chọn bảng màu bạn thích'}</strong>
-            <p>{fields.message || 'Một chút về người ấy, một chút về điều bạn muốn gửi…'}</p>
-          </div>
-          <small>Hình minh họa màu sắc, không phải thiết kế thành phẩm.</small>
-        </figure>
+        {!bouquet && (
+          <figure className="x-prev custom-preview">
+            <figcaption className="x-prev__t">Ý tưởng đang nở hoa</figcaption>
+            <IdeaBouquet colors={palette.colors} />
+            <div className="custom-preview-text">
+              <strong>{fields.palette || 'Chọn bảng màu bạn thích'}</strong>
+              <p>{fields.message || 'Một chút về người ấy, một chút về điều bạn muốn gửi…'}</p>
+            </div>
+            <small>Hình minh họa màu sắc, không phải thiết kế thành phẩm.</small>
+          </figure>
+        )}
       </aside>
     </div>
   );
